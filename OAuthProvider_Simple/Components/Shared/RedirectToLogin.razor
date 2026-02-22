@@ -1,0 +1,13 @@
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+    {
+        // Force a full page load so the browser hits the static Razor Page
+        // at /Account/Login — necessary because Blazor's interactive circuit
+        // cannot write Set-Cookie headers; only the static SSR page can.
+        var currentUri = Nav.Uri;
+        var encoded = Uri.EscapeDataString(currentUri);
+        Nav.NavigateTo($"/Account/Login?ReturnUrl={encoded}", forceLoad: true);
+    }
+}

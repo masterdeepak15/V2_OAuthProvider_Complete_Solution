@@ -1,0 +1,112 @@
+@page "/tokens"
+@using OAuthProvider.Services
+@using OAuthProvider.Models
+@inject IDashboardService Dashboard
+@inject IOAuthService OAuthSvc
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+
+<PageTitle>Token Monitor — OAuth Provider</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">Token Monitor</h4>
+        <p class="text-muted mb-0">View and revoke active access tokens</p>
+    </div>
+    <button class="btn btn-outline-primary btn-sm" @onclick="Reload">↺ Refresh</button>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        @if (_tokens == null)
+        {
+            <div class="text-center p-4"><div class="spinner-border text-primary"></div></div>
+        }
+        else if (_tokens.Count == 0)
+        {
+            <div class="text-center text-muted py-5">
+                <svg width="48" height="48" fill="#ccc" class="mb-3" viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z"/></svg>
+                <div>No active tokens</div>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="px-4">Client</th>
+                            <th>User</th>
+                            <th>Scopes</th>
+                            <th>Expires</th>
+                            <th>Issued</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var token in _tokens)
+                        {
+                            var timeLeft = token.ExpiresAt - DateTime.UtcNow;
+                            <tr>
+                                <td class="px-4">
+                                    <div class="fw-medium small">@token.Client?.Name</div>
+                                    <small class="text-muted font-monospace">@token.Client?.ClientId</small>
+                                </td>
+                                <td>
+                                    @if (token.User != null)
+                                    {
+                                        <span class="small">@token.User.Email</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-info bg-opacity-10 text-info small">Service Account</span>
+                                    }
+                                </td>
+                                <td>
+                                    @foreach (var scope in token.Scopes.Split(' '))
+                                    {
+                                        <span class="badge bg-light text-dark me-1 small">@scope</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="small @(timeLeft.TotalMinutes < 5 ? "text-danger" : "text-muted")">
+                                        @token.ExpiresAt.ToString("MMM d HH:mm")
+                                    </div>
+                                    <small class="text-muted" style="font-size:11px;">
+                                        @if (timeLeft.TotalHours >= 1)
+                                        { @($"{(int)timeLeft.TotalHours}h {timeLeft.Minutes}m left") }
+                                        else
+                                        { @($"{timeLeft.Minutes}m {timeLeft.Seconds}s left") }
+                                    </small>
+                                </td>
+                                <td class="text-muted small">@token.CreatedAt.ToString("MMM d HH:mm")</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => Revoke(token)">Revoke</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+    @if (_tokens != null)
+    {
+        <div class="card-footer bg-white text-muted small">
+            Showing @_tokens.Count active tokens
+        </div>
+    }
+</div>
+
+@code {
+    private List<AccessToken>? _tokens;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload() => _tokens = await Dashboard.GetActiveTokensAsync();
+
+    private async Task Revoke(AccessToken token)
+    {
+        await OAuthSvc.RevokeTokenAsync(token.Token);
+        _tokens = _tokens?.Where(t => t.Id != token.Id).ToList();
+    }
+}

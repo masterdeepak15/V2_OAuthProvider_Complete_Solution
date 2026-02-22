@@ -1,0 +1,142 @@
+@page "/"
+@using OAuthProvider.Services
+@using OAuthProvider.Models
+@inject IDashboardService DashSvc
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+
+<PageTitle>Dashboard — OAuth Provider</PageTitle>
+
+<div class="mb-4">
+    <h4 class="fw-bold mb-1">Dashboard Overview</h4>
+    <p class="text-muted mb-0">Welcome to the OAuth Provider Admin Console</p>
+</div>
+
+@if (_stats == null)
+{
+    <div class="d-flex justify-content-center p-5">
+        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+    </div>
+}
+else
+{
+    <!-- Stats Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="bg-primary bg-opacity-10 rounded p-2">
+                            <svg width="22" height="22" fill="#6366f1" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                        </div>
+                        <span class="badge bg-primary bg-opacity-10 text-primary">Users</span>
+                    </div>
+                    <h2 class="fw-bold mb-0">@_stats.TotalUsers</h2>
+                    <p class="text-muted mb-0 small">Total registered users</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="bg-success bg-opacity-10 rounded p-2">
+                            <svg width="22" height="22" fill="#198754" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                        </div>
+                        <span class="badge bg-success bg-opacity-10 text-success">Projects</span>
+                    </div>
+                    <h2 class="fw-bold mb-0">@_stats.TotalProjects</h2>
+                    <p class="text-muted mb-0 small">Total projects</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="bg-warning bg-opacity-10 rounded p-2">
+                            <svg width="22" height="22" fill="#ffc107" viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+                        </div>
+                        <span class="badge bg-warning bg-opacity-10 text-warning">Clients</span>
+                    </div>
+                    <h2 class="fw-bold mb-0">@_stats.TotalClients</h2>
+                    <p class="text-muted mb-0 small">OAuth clients registered</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="bg-info bg-opacity-10 rounded p-2">
+                            <svg width="22" height="22" fill="#0dcaf0" viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z"/></svg>
+                        </div>
+                        <span class="badge bg-info bg-opacity-10 text-info">Tokens</span>
+                    </div>
+                    <h2 class="fw-bold mb-0">@_stats.ActiveTokens</h2>
+                    <p class="text-muted mb-0 small">Active access tokens</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Logins -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-bottom py-3">
+            <h6 class="mb-0 fw-semibold">Recent Login Activity</h6>
+        </div>
+        <div class="card-body p-0">
+            @if (_recentLogins.Count == 0)
+            {
+                <div class="text-center text-muted py-5">No login activity yet</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="px-4">User</th>
+                                <th>Status</th>
+                                <th>IP Address</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var login in _recentLogins)
+                            {
+                                <tr>
+                                    <td class="px-4">
+                                        <div class="fw-medium">@login.User?.Email</div>
+                                    </td>
+                                    <td>
+                                        @if (login.Success)
+                                        {
+                                            <span class="badge bg-success">Success</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">Failed</span>
+                                        }
+                                    </td>
+                                    <td><code class="small">@(login.IpAddress ?? "—")</code></td>
+                                    <td class="text-muted small">@login.CreatedAt.ToString("MMM d, yyyy HH:mm")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private DashboardStats? _stats;
+    private List<LoginAudit> _recentLogins = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stats = await DashSvc.GetStatsAsync();
+        _recentLogins = await DashSvc.GetRecentLoginsAsync(10);
+    }
+}

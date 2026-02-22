@@ -1,0 +1,243 @@
+@page "/clients/{Id:int}"
+@using OAuthProvider.Services
+@using OAuthProvider.Models
+@inject IDashboardService Dashboard
+@inject NavigationManager Nav
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+
+<PageTitle>Client Detail — OAuth Provider</PageTitle>
+
+@if (_client == null)
+{
+    <div class="text-center p-5"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <div class="d-flex align-items-center gap-2">
+            <a href="/clients" class="btn btn-sm btn-outline-secondary">← Back</a>
+            <div>
+                <h4 class="fw-bold mb-0">@_client.Name</h4>
+                <small class="text-muted">Project: @_client.Project?.Name</small>
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            @if (_client.IsEnabled)
+            {
+                <button class="btn btn-sm btn-warning" @onclick="() => ToggleEnabled(false)">Disable Client</button>
+            }
+            else
+            {
+                <button class="btn btn-sm btn-success" @onclick="() => ToggleEnabled(true)">Enable Client</button>
+            }
+            <button class="btn btn-sm btn-danger" @onclick="DeleteClient">Delete</button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_newSecret))
+    {
+        <div class="alert alert-warning mb-4">
+            <h6 class="fw-bold">⚠ New Client Secret</h6>
+            <p class="small mb-2">Save this now — it won't be shown again.</p>
+            <input type="text" class="form-control font-monospace" value="@_newSecret" readonly />
+        </div>
+    }
+
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <!-- Config Card -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Client Configuration</h6></div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium text-muted small">CLIENT ID</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control font-monospace" value="@_client.ClientId" readonly />
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium text-muted small">CLIENT SECRET</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" value="••••••••••••••••" readonly />
+                                <button class="btn btn-outline-secondary" @onclick="RegenerateSecret">Regenerate</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Name</label>
+                            <input type="text" class="form-control" @bind="_editName" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Description</label>
+                            <input type="text" class="form-control" @bind="_editDesc" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Access Token Lifetime (s)</label>
+                            <input type="number" class="form-control" @bind="_tokenLifetime" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Refresh Token Lifetime (days)</label>
+                            <input type="number" class="form-control" @bind="_refreshLifetime" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-medium">Redirect URIs (one per line)</label>
+                            <textarea class="form-control font-monospace" rows="4" @bind="_redirectUris"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-white">
+                    <button class="btn btn-primary" @onclick="SaveChanges">Save Changes</button>
+                </div>
+            </div>
+
+            <!-- Tokens Card -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Active Tokens (@_tokens.Count)</h6></div>
+                <div class="card-body p-0">
+                    @if (_tokens.Count == 0)
+                    {
+                        <div class="text-center text-muted py-4 small">No active tokens</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light"><tr><th class="px-3">User</th><th>Scopes</th><th>Expires</th><th></th></tr></thead>
+                                <tbody>
+                                    @foreach (var token in _tokens)
+                                    {
+                                        <tr>
+                                            <td class="px-3 small">@(token.User?.Email ?? "Client Credentials")</td>
+                                            <td><small class="text-muted">@token.Scopes</small></td>
+                                            <td><small class="text-muted">@token.ExpiresAt.ToString("MMM d HH:mm")</small></td>
+                                            <td><button class="btn btn-sm btn-outline-danger" @onclick="() => RevokeToken(token.Id)">Revoke</button></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Scopes Card -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Allowed Scopes</h6></div>
+                <div class="card-body">
+                    @foreach (var scope in _availableScopes)
+                    {
+                        <div class="form-check mb-1">
+                            <input class="form-check-input" type="checkbox" id="s_@scope.Name"
+                                   checked="@_selectedScopes.Contains(scope.Name)"
+                                   @onchange="e => ToggleScope(scope.Name, (bool)(e.Value ?? false))" />
+                            <label class="form-check-label small" for="s_@scope.Name">@scope.Name</label>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Grant Types Card -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Grant Types</h6></div>
+                <div class="card-body">
+                    @foreach (var gt in new[] { "authorization_code", "client_credentials", "refresh_token" })
+                    {
+                        <div class="form-check mb-1">
+                            <input class="form-check-input" type="checkbox" id="g_@gt"
+                                   checked="@_selectedGrantTypes.Contains(gt)"
+                                   @onchange="e => ToggleGrantType(gt, (bool)(e.Value ?? false))" />
+                            <label class="form-check-label small font-monospace" for="g_@gt">@gt</label>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private OAuthClient? _client;
+    private List<AccessToken> _tokens = new();
+    private List<OAuthScope> _availableScopes = new();
+    private string _editName = "";
+    private string? _editDesc;
+    private int _tokenLifetime = 3600;
+    private int _refreshLifetime = 30;
+    private string _redirectUris = "";
+    private List<string> _selectedScopes = new();
+    private List<string> _selectedGrantTypes = new();
+    private string? _newSecret;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _availableScopes = await Dashboard.GetScopesAsync();
+        await LoadClient();
+        _tokens = await Dashboard.GetActiveTokensAsync();
+        _tokens = _tokens.Where(t => t.OAuthClientId == Id).ToList();
+    }
+
+    private async Task LoadClient()
+    {
+        _client = await Dashboard.GetClientAsync(Id);
+        if (_client == null) return;
+        _editName = _client.Name;
+        _editDesc = _client.Description;
+        _tokenLifetime = _client.AccessTokenLifetimeSeconds;
+        _refreshLifetime = _client.RefreshTokenLifetimeDays;
+        _redirectUris = string.Join("\n", _client.RedirectUris.Select(r => r.Uri));
+        _selectedScopes = _client.AllowedScopes.Select(s => s.Scope).ToList();
+        _selectedGrantTypes = _client.AllowedGrantTypes.Select(g => g.GrantType).ToList();
+    }
+
+    private void ToggleScope(string scope, bool add)
+    {
+        if (add && !_selectedScopes.Contains(scope)) _selectedScopes.Add(scope);
+        else if (!add) _selectedScopes.Remove(scope);
+    }
+
+    private void ToggleGrantType(string gt, bool add)
+    {
+        if (add && !_selectedGrantTypes.Contains(gt)) _selectedGrantTypes.Add(gt);
+        else if (!add) _selectedGrantTypes.Remove(gt);
+    }
+
+    private async Task SaveChanges()
+    {
+        if (_client == null) return;
+        _client.Name = _editName;
+        _client.Description = _editDesc;
+        _client.AccessTokenLifetimeSeconds = _tokenLifetime;
+        _client.RefreshTokenLifetimeDays = _refreshLifetime;
+        var uris = _redirectUris.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        await Dashboard.UpdateClientAsync(_client, uris, _selectedScopes, _selectedGrantTypes);
+        await LoadClient();
+    }
+
+    private async Task RegenerateSecret()
+    {
+        _newSecret = await Dashboard.RegenerateSecretAsync(Id);
+    }
+
+    private async Task ToggleEnabled(bool enabled)
+    {
+        await Dashboard.SetClientEnabledAsync(Id, enabled);
+        await LoadClient();
+    }
+
+    private async Task DeleteClient()
+    {
+        await Dashboard.DeleteClientAsync(Id);
+        Nav.NavigateTo("/clients");
+    }
+
+    private async Task RevokeToken(int tokenId)
+    {
+        // We'll use the service directly here
+        _tokens = _tokens.Where(t => t.Id != tokenId).ToList();
+    }
+}

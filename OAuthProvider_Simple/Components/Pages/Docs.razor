@@ -1,0 +1,134 @@
+@page "/docs"
+@inject NavigationManager Nav
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>API Documentation — OAuth Provider</PageTitle>
+
+<div class="mb-4">
+    <h4 class="fw-bold mb-1">API Documentation</h4>
+    <p class="text-muted mb-0">OAuth 2.0 endpoints and integration guide</p>
+</div>
+
+@{
+    var baseUrl = Nav.BaseUri.TrimEnd('/');
+}
+
+<div class="row g-4">
+    <div class="col-lg-8">
+
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-semibold">Discovery Endpoint</h6>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">Auto-discover all OAuth endpoints:</p>
+                <div class="bg-dark text-success rounded p-3 font-monospace small">
+                    GET @baseUrl/.well-known/openid-configuration
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <span class="badge bg-primary me-2">GET</span>
+                <span class="fw-semibold">/authorize</span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Initiates the Authorization Code flow. Redirects the user to authenticate.</p>
+                <table class="table table-sm table-bordered">
+                    <thead class="table-light"><tr><th>Parameter</th><th>Required</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>response_type</code></td><td><span class="badge bg-danger">required</span></td><td>Must be <code>code</code></td></tr>
+                        <tr><td><code>client_id</code></td><td><span class="badge bg-danger">required</span></td><td>Your client ID</td></tr>
+                        <tr><td><code>redirect_uri</code></td><td><span class="badge bg-danger">required</span></td><td>Registered redirect URI</td></tr>
+                        <tr><td><code>scope</code></td><td><span class="badge bg-secondary">optional</span></td><td>Space-separated scopes</td></tr>
+                        <tr><td><code>state</code></td><td><span class="badge bg-secondary">optional</span></td><td>Anti-CSRF state token</td></tr>
+                        <tr><td><code>code_challenge</code></td><td><span class="badge bg-secondary">optional</span></td><td>PKCE code challenge</td></tr>
+                        <tr><td><code>code_challenge_method</code></td><td><span class="badge bg-secondary">optional</span></td><td><code>S256</code> or <code>plain</code></td></tr>
+                    </tbody>
+                </table>
+                <div class="bg-dark text-success rounded p-3 font-monospace small mt-2">
+                    GET @baseUrl/authorize?response_type=code&amp;client_id=YOUR_CLIENT_ID&amp;redirect_uri=https://yourapp.com/callback&amp;scope=openid+profile
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <span class="badge bg-success me-2">POST</span>
+                <span class="fw-semibold">/token</span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Exchange authorization code or refresh token for access tokens.</p>
+                <h6 class="fw-semibold small">Authorization Code</h6>
+                <div class="bg-dark text-success rounded p-3 font-monospace small mb-3" style="white-space:pre-wrap;">POST @baseUrl/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code
+&amp;code=AUTH_CODE
+&amp;redirect_uri=https://yourapp.com/callback
+&amp;client_id=YOUR_CLIENT_ID
+&amp;client_secret=YOUR_SECRET</div>
+                <h6 class="fw-semibold small">Client Credentials</h6>
+                <div class="bg-dark text-success rounded p-3 font-monospace small mb-3" style="white-space:pre-wrap;">POST @baseUrl/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&amp;client_id=YOUR_CLIENT_ID
+&amp;client_secret=YOUR_SECRET</div>
+                <h6 class="fw-semibold small">Refresh Token</h6>
+                <div class="bg-dark text-success rounded p-3 font-monospace small" style="white-space:pre-wrap;">POST @baseUrl/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token
+&amp;refresh_token=REFRESH_TOKEN
+&amp;client_id=YOUR_CLIENT_ID</div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <span class="badge bg-primary me-2">GET</span>
+                <span class="fw-semibold">/userinfo</span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Returns profile information for the authenticated user.</p>
+                <div class="bg-dark text-success rounded p-3 font-monospace small mb-3" style="white-space:pre-wrap;">GET @baseUrl/userinfo
+Authorization: Bearer ACCESS_TOKEN</div>
+                <div class="bg-light rounded p-3 font-monospace small" style="white-space:pre-wrap;">{
+  "sub": "user-id",
+  "email": "user@example.com",
+  "email_verified": true,
+  "given_name": "John",
+  "family_name": "Doe",
+  "name": "John Doe"
+}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Available Scopes</h6></div>
+            <div class="list-group list-group-flush">
+                <div class="list-group-item"><code class="small">openid</code><p class="mb-0 text-muted small">OpenID Connect</p></div>
+                <div class="list-group-item"><code class="small">profile</code><p class="mb-0 text-muted small">Name &amp; basic info</p></div>
+                <div class="list-group-item"><code class="small">email</code><p class="mb-0 text-muted small">Email address</p></div>
+                <div class="list-group-item"><code class="small">api</code><p class="mb-0 text-muted small">API resource access</p></div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Token Response</h6></div>
+            <div class="card-body">
+                <div class="bg-light rounded p-3 font-monospace small" style="white-space:pre-wrap;">{
+  "access_token": "eyJ...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "abc...",
+  "scope": "openid profile"
+}</div>
+            </div>
+        </div>
+    </div>
+</div>

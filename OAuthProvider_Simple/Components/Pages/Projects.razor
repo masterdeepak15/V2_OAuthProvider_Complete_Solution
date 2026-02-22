@@ -1,0 +1,130 @@
+@page "/projects"
+@using OAuthProvider.Services
+@using OAuthProvider.Models
+@inject IDashboardService Dashboard
+@inject NavigationManager Nav
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+
+<PageTitle>Projects — OAuth Provider</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">Projects</h4>
+        <p class="text-muted mb-0">Manage OAuth projects and client applications</p>
+    </div>
+    <button class="btn btn-primary" @onclick="() => _showCreate = true">
+        <svg class="me-1" width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        New Project
+    </button>
+</div>
+
+@if (_showCreate)
+{
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Create New Project</h6></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Project Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" @bind="_newName" placeholder="My Application" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Description</label>
+                    <input type="text" class="form-control" @bind="_newDesc" placeholder="Optional description" />
+                </div>
+            </div>
+            @if (!string.IsNullOrEmpty(_createError))
+            {
+                <div class="alert alert-danger mt-3 mb-0">@_createError</div>
+            }
+        </div>
+        <div class="card-footer bg-white d-flex gap-2">
+            <button class="btn btn-primary" @onclick="CreateProject">Create Project</button>
+            <button class="btn btn-secondary" @onclick="() => { _showCreate = false; _createError = null; }">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (_projects == null)
+{
+    <div class="text-center p-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (_projects.Count == 0)
+{
+    <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-5">
+            <svg width="48" height="48" fill="#ccc" class="mb-3" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+            <h5 class="text-muted">No projects yet</h5>
+            <p class="text-muted">Create your first project to get started</p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row g-4">
+        @foreach (var project in _projects)
+        {
+            <div class="col-md-6 col-xl-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-start justify-content-between mb-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="bg-primary bg-opacity-10 rounded p-2">
+                                    <svg width="20" height="20" fill="#6366f1" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                                </div>
+                                <div>
+                                    <h6 class="mb-0 fw-semibold">@project.Name</h6>
+                                    <small class="text-muted">Created @project.CreatedAt.ToString("MMM d, yyyy")</small>
+                                </div>
+                            </div>
+                            <span class="badge @(project.IsActive ? "bg-success" : "bg-secondary")">@(project.IsActive ? "Active" : "Inactive")</span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(project.Description))
+                        {
+                            <p class="text-muted small mb-3">@project.Description</p>
+                        }
+                        <div class="d-flex gap-3 mb-3">
+                            <div class="text-center">
+                                <div class="fw-bold">@project.Clients.Count</div>
+                                <small class="text-muted">Clients</small>
+                            </div>
+                            <div class="text-center">
+                                <div class="fw-bold">@project.ProjectUsers.Count</div>
+                                <small class="text-muted">Members</small>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="/projects/@project.Id" class="btn btn-sm btn-outline-primary flex-fill">Manage</a>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteProject(project.Id)">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<Project>? _projects;
+    private bool _showCreate = false;
+    private string _newName = "";
+    private string? _newDesc;
+    private string? _createError;
+
+    protected override async Task OnInitializedAsync() => _projects = await Dashboard.GetProjectsAsync();
+
+    private async Task CreateProject()
+    {
+        if (string.IsNullOrWhiteSpace(_newName)) { _createError = "Project name is required"; return; }
+        await Dashboard.CreateProjectAsync(_newName.Trim(), _newDesc?.Trim());
+        _showCreate = false;
+        _newName = ""; _newDesc = null; _createError = null;
+        _projects = await Dashboard.GetProjectsAsync();
+    }
+
+    private async Task DeleteProject(int id)
+    {
+        await Dashboard.DeleteProjectAsync(id);
+        _projects = await Dashboard.GetProjectsAsync();
+    }
+}

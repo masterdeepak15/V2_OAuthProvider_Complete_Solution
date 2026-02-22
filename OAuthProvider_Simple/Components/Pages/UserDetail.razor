@@ -1,0 +1,115 @@
+@page "/users/{Id}"
+@using OAuthProvider.Services
+@using OAuthProvider.Models
+@inject IDashboardService Dashboard
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+
+<PageTitle>User Detail — OAuth Provider</PageTitle>
+
+@if (_user == null)
+{
+    <div class="text-center p-5"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <div class="d-flex align-items-center gap-2 mb-4">
+        <a href="/users" class="btn btn-sm btn-outline-secondary">← Back</a>
+        <div>
+            <h4 class="fw-bold mb-0">@_user.Email</h4>
+            <small class="text-muted">@(_user.FirstName) @(_user.LastName)</small>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Role Assignment</h6></div>
+                <div class="card-body">
+                    @foreach (var role in new[] { "Admin", "Developer" })
+                    {
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="r_@role"
+                                   checked="@_selectedRoles.Contains(role)"
+                                   @onchange="e => ToggleRole(role, (bool)(e.Value ?? false))" />
+                            <label class="form-check-label" for="r_@role">@role</label>
+                        </div>
+                    }
+                </div>
+                <div class="card-footer bg-white">
+                    <button class="btn btn-primary btn-sm" @onclick="SaveRoles">Save Roles</button>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Account Info</h6></div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-5 text-muted small">User ID</dt>
+                        <dd class="col-7 small font-monospace">@_user.Id[..8]…</dd>
+                        <dt class="col-5 text-muted small">Email Confirmed</dt>
+                        <dd class="col-7">@(_user.EmailConfirmed ? "✓ Yes" : "✗ No")</dd>
+                        <dt class="col-5 text-muted small">Joined</dt>
+                        <dd class="col-7 small">@_user.CreatedAt.ToString("MMM d, yyyy")</dd>
+                        <dt class="col-5 text-muted small">Last Login</dt>
+                        <dd class="col-7 small">@(_user.LastLoginAt?.ToString("MMM d, yyyy HH:mm") ?? "Never")</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Login History</h6></div>
+                <div class="card-body p-0">
+                    @if (_loginHistory.Count == 0)
+                    {
+                        <div class="text-center text-muted py-4 small">No login history</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light"><tr><th class="px-3">Time</th><th>Status</th><th>IP</th></tr></thead>
+                                <tbody>
+                                    @foreach (var log in _loginHistory)
+                                    {
+                                        <tr>
+                                            <td class="px-3 small">@log.CreatedAt.ToString("MMM d HH:mm")</td>
+                                            <td>
+                                                @if (log.Success) { <span class="badge bg-success">OK</span> }
+                                                else { <span class="badge bg-danger">Failed</span> }
+                                            </td>
+                                            <td class="small text-muted">@(log.IpAddress ?? "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+    private ApplicationUser? _user;
+    private List<string> _selectedRoles = new();
+    private List<LoginAudit> _loginHistory = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await Dashboard.GetUserAsync(Id);
+        _selectedRoles = await Dashboard.GetUserRolesAsync(Id);
+        _loginHistory = await Dashboard.GetUserLoginHistoryAsync(Id);
+    }
+
+    private void ToggleRole(string role, bool add)
+    {
+        if (add && !_selectedRoles.Contains(role)) _selectedRoles.Add(role);
+        else if (!add) _selectedRoles.Remove(role);
+    }
+
+    private async Task SaveRoles() => await Dashboard.SetUserRolesAsync(Id, _selectedRoles);
+}

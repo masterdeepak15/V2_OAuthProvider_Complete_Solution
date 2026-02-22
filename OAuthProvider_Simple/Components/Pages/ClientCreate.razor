@@ -1,0 +1,150 @@
+@page "/clients/create"
+@using OAuthProvider.Services
+@using OAuthProvider.Models
+@inject IDashboardService Dashboard
+@inject NavigationManager Nav
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+
+<PageTitle>Create Client — OAuth Provider</PageTitle>
+
+<div class="d-flex align-items-center gap-2 mb-4">
+    <a href="/clients" class="btn btn-sm btn-outline-secondary">← Back</a>
+    <div>
+        <h4 class="fw-bold mb-0">Create OAuth Client</h4>
+    </div>
+</div>
+
+@if (_newSecret != null)
+{
+    <div class="alert alert-warning border-warning mb-4">
+        <h6 class="fw-bold">⚠ Save Your Client Secret</h6>
+        <p class="mb-2 small">This is the only time you'll see the client secret. Store it securely.</p>
+        <div class="input-group">
+            <input type="text" class="form-control font-monospace" value="@_newSecret" readonly />
+        </div>
+        <a href="/clients/@_createdClientId" class="btn btn-primary mt-3">View Client →</a>
+    </div>
+}
+else
+{
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Project <span class="text-danger">*</span></label>
+                    <select class="form-select" @bind="_projectId">
+                        <option value="0">— Select Project —</option>
+                        @foreach (var p in _projects)
+                        {
+                            <option value="@p.Id">@p.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Client Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" @bind="_name" placeholder="My Web App" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label fw-medium">Description</label>
+                    <input type="text" class="form-control" @bind="_description" placeholder="Optional description" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Access Token Lifetime (seconds)</label>
+                    <input type="number" class="form-control" @bind="_tokenLifetime" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Refresh Token Lifetime (days)</label>
+                    <input type="number" class="form-control" @bind="_refreshLifetime" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label fw-medium">Redirect URIs (one per line)</label>
+                    <textarea class="form-control font-monospace" rows="4" @bind="_redirectUris" placeholder="https://yourapp.com/callback"></textarea>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Allowed Scopes</label>
+                    <div class="d-flex flex-wrap gap-2 mt-1">
+                        @foreach (var scope in _availableScopes)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="scope_@scope.Name"
+                                       checked="@_selectedScopes.Contains(scope.Name)"
+                                       @onchange="e => ToggleScope(scope.Name, (bool)(e.Value ?? false))" />
+                                <label class="form-check-label" for="scope_@scope.Name">@scope.Name</label>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Grant Types</label>
+                    <div class="d-flex flex-column gap-2 mt-1">
+                        @foreach (var gt in new[] { "authorization_code", "client_credentials", "refresh_token" })
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="gt_@gt"
+                                       checked="@_selectedGrantTypes.Contains(gt)"
+                                       @onchange="e => ToggleGrantType(gt, (bool)(e.Value ?? false))" />
+                                <label class="form-check-label font-monospace small" for="gt_@gt">@gt</label>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger mt-3 mb-0">@_error</div>
+            }
+        </div>
+        <div class="card-footer bg-white d-flex gap-2">
+            <button class="btn btn-primary" @onclick="Create">Create Client</button>
+            <a href="/clients" class="btn btn-secondary">Cancel</a>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery] private int? projectId { get; set; }
+
+    private List<Project> _projects = new();
+    private List<OAuthScope> _availableScopes = new();
+    private int _projectId;
+    private string _name = "";
+    private string? _description;
+    private int _tokenLifetime = 3600;
+    private int _refreshLifetime = 30;
+    private string _redirectUris = "";
+    private List<string> _selectedScopes = new() { "openid", "profile" };
+    private List<string> _selectedGrantTypes = new() { "authorization_code", "refresh_token" };
+    private string? _error;
+    private string? _newSecret;
+    private int _createdClientId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _projects = await Dashboard.GetProjectsAsync();
+        _availableScopes = await Dashboard.GetScopesAsync();
+        if (projectId.HasValue) _projectId = projectId.Value;
+    }
+
+    private void ToggleScope(string scope, bool add)
+    {
+        if (add && !_selectedScopes.Contains(scope)) _selectedScopes.Add(scope);
+        else if (!add) _selectedScopes.Remove(scope);
+    }
+
+    private void ToggleGrantType(string gt, bool add)
+    {
+        if (add && !_selectedGrantTypes.Contains(gt)) _selectedGrantTypes.Add(gt);
+        else if (!add) _selectedGrantTypes.Remove(gt);
+    }
+
+    private async Task Create()
+    {
+        if (_projectId == 0) { _error = "Please select a project"; return; }
+        if (string.IsNullOrWhiteSpace(_name)) { _error = "Name is required"; return; }
+
+        var uris = _redirectUris.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        var (client, secret) = await Dashboard.CreateClientAsync(_projectId, _name, _description, uris, _selectedScopes, _selectedGrantTypes, _tokenLifetime, _refreshLifetime);
+        _newSecret = secret;
+        _createdClientId = client.Id;
+    }
+}
