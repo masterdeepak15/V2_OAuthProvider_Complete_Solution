@@ -1,0 +1,112 @@
+@page "/projects"
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "OrgAdmin,OrgUser")]
+
+<PageTitle>Projects — OAuth Provider</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">Projects</h4>
+        <p class="text-muted mb-0">Logical groupings for your OAuth clients</p>
+    </div>
+    <AuthorizeView Roles="OrgAdmin">
+        <button class="btn btn-primary" @onclick="() => _showCreate = true">+ New Project</button>
+    </AuthorizeView>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{ <div class="alert alert-@(_isError ? "danger" : "success") small mb-4">@_message</div> }
+
+@if (_showCreate)
+{
+    <div class="card border-0 shadow-sm border-start border-primary border-3 mb-4">
+        <div class="card-body">
+            <h6 class="fw-semibold mb-3">New Project</h6>
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label small fw-medium">Name <span class="text-danger">*</span></label>
+                    <input class="form-control" @bind="_newName" placeholder="My API"/>
+                </div>
+                <div class="col-md-7">
+                    <label class="form-label small fw-medium">Description</label>
+                    <input class="form-control" @bind="_newDesc" placeholder="Optional description"/>
+                </div>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+                <button class="btn btn-primary" @onclick="CreateAsync">Create</button>
+                <button class="btn btn-outline-secondary" @onclick="() => _showCreate = false">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="row g-3">
+    @foreach (var p in _projects)
+    {
+        <div class="col-md-6 col-xl-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <h6 class="fw-bold mb-0">@p.Name</h6>
+                        <span class="badge @(p.IsActive ? "bg-success" : "bg-secondary")">
+                            @(p.IsActive ? "Active" : "Inactive")
+                        </span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(p.Description))
+                    { <p class="text-muted small mb-3">@p.Description</p> }
+                    <div class="d-flex gap-3 small text-muted mb-3">
+                        <span>🔑 @p.Clients.Count clients</span>
+                        <span>👥 @p.ProjectUsers.Count members</span>
+                    </div>
+                    <a href="/projects/@p.Id" class="btn btn-sm btn-outline-primary w-100">Manage →</a>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private int _orgId;
+    private List<Project> _projects = new();
+    private bool _showCreate;
+    private string _newName = "", _newDesc = "";
+    private string _message = "";
+    private bool _isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Email == auth.User.Identity!.Name);
+        if (user?.OrganizationId == null) return;
+        _orgId = user.OrganizationId.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _projects = await Db.Projects
+            .Include(p => p.Clients)
+            .Include(p => p.ProjectUsers)
+            .Where(p => p.OrganizationId == _orgId)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newName)) { _message = "Name is required."; _isError = true; return; }
+
+        Db.Projects.Add(new Project
+        {
+            OrganizationId = _orgId,
+            Name           = _newName.Trim(),
+            Description    = _newDesc.Trim(),
+        });
+        await Db.SaveChangesAsync();
+        _newName = _newDesc = "";
+        _showCreate = false;
+        _message = "Project created."; _isError = false;
+        await LoadAsync();
+    }
+}

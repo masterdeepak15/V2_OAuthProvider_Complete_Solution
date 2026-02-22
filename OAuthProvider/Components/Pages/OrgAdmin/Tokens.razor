@@ -1,0 +1,120 @@
+@page "/tokens"
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "OrgAdmin")]
+
+<PageTitle>Tokens — OAuth Provider</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">Active Tokens</h4>
+        <p class="text-muted mb-0">All non-expired, non-revoked access tokens for your organization</p>
+    </div>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="LoadAsync">↻ Refresh</button>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-sm-4">
+        <div class="stat-card"><div class="stat-icon" style="background:#eef2ff;color:#6366f1;">🪙</div>
+            <div><div class="stat-value">@_tokens.Count</div><div class="stat-label">Active Tokens</div></div></div>
+    </div>
+    <div class="col-sm-4">
+        <div class="stat-card"><div class="stat-icon" style="background:#f0fdf4;color:#22c55e;">👤</div>
+            <div><div class="stat-value">@_tokens.Where(t => t.UserId != null).Select(t => t.UserId).Distinct().Count()</div>
+                <div class="stat-label">Unique Users</div></div></div>
+    </div>
+    <div class="col-sm-4">
+        <div class="stat-card"><div class="stat-icon" style="background:#fefce8;color:#f59e0b;">⚙️</div>
+            <div><div class="stat-value">@_tokens.Where(t => t.UserId == null).Count()</div>
+                <div class="stat-label">Service Accounts</div></div></div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="px-4">User / Account</th>
+                        <th>Client</th>
+                        <th>Scopes</th>
+                        <th>Expires</th>
+                        <th>Time Left</th>
+                        <th>Issued</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in _tokens)
+                    {
+                        var remaining = t.ExpiresAt - DateTime.UtcNow;
+                        <tr>
+                            <td class="px-4">
+                                @if (t.User != null)
+                                {
+                                    <div class="fw-medium small">@t.User.Email</div>
+                                    <div class="text-muted" style="font-size:11px;">@t.User.FullName</div>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Service Account</span>
+                                }
+                            </td>
+                            <td class="small">@(t.Client.Name)</td>
+                            <td>
+                                @foreach (var s in t.Scopes.Split(' '))
+                                { <span class="badge bg-primary bg-opacity-10 text-primary me-1" style="font-size:10px;">@s</span> }
+                            </td>
+                            <td class="small text-muted text-nowrap">@t.ExpiresAt.ToString("MMM d HH:mm")</td>
+                            <td>
+                                @if (remaining.TotalMinutes < 5)
+                                { <span class="badge bg-danger">@((int)remaining.TotalSeconds)s</span> }
+                                else if (remaining.TotalHours < 1)
+                                { <span class="badge bg-warning text-dark">@((int)remaining.TotalMinutes)m</span> }
+                                else
+                                { <span class="badge bg-success">@((int)remaining.TotalHours)h</span> }
+                            </td>
+                            <td class="small text-muted text-nowrap">@t.CreatedAt.ToString("MMM d HH:mm")</td>
+                            <td>
+                                <button class="btn btn-xs btn-outline-danger"
+                                        @onclick="() => RevokeAsync(t.Id)">Revoke</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int _orgId;
+    private List<OAuthProviderV2.Models.AccessToken> _tokens = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Email == auth.User.Identity!.Name);
+        if (user?.OrganizationId == null) return;
+        _orgId = user.OrganizationId.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _tokens = await Db.AccessTokens
+            .Include(t => t.User)
+            .Include(t => t.Client)
+            .Where(t => t.OrganizationId == _orgId && !t.IsRevoked && t.ExpiresAt > DateTime.UtcNow)
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync();
+    }
+
+    private async Task RevokeAsync(int id)
+    {
+        var t = await Db.AccessTokens.FindAsync(id);
+        if (t != null) { t.IsRevoked = true; await Db.SaveChangesAsync(); }
+        await LoadAsync();
+    }
+}

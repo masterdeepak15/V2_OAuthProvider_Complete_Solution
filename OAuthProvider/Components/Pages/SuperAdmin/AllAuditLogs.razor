@@ -1,0 +1,150 @@
+@* SuperAdmin All Audit Logs *@
+@page "/super/audits"
+@inject ApplicationDbContext Db
+@using OAuthProviderV2.Services.Audit
+@inject IAuditService AuditSvc
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SuperAdmin")]
+
+<PageTitle>Platform Audit Logs — Super Admin</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">Platform Audit Logs</h4>
+        <p class="text-muted mb-0">All events across every organization — @_totalCount total</p>
+    </div>
+    <div class="d-flex gap-2">
+        <select class="form-select form-select-sm" style="width:auto;" @bind="_filterOrg" @bind:after="LoadAsync">
+            <option value="0">All Organizations</option>
+            @foreach (var o in _orgs)
+            { <option value="@o.Id">@o.Name</option> }
+        </select>
+        <select class="form-select form-select-sm" style="width:auto;" @bind="_filterCategory" @bind:after="LoadAsync">
+            <option value="">All Categories</option>
+            <option value="auth">Auth</option>
+            <option value="oauth">OAuth</option>
+            <option value="admin">Admin</option>
+            <option value="waf">WAF</option>
+        </select>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="px-4">Organization</th>
+                        <th>Event</th>
+                        <th>User</th>
+                        <th>Browser · OS</th>
+                        <th>IP</th>
+                        <th>Time</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in _logs)
+                    {
+                        <tr @onclick="() => _selected = (_selected == log ? null : log)" style="cursor:pointer;">
+                            <td class="px-4 small">@(log.Organization?.Name ?? "Platform")</td>
+                            <td>
+                                <span class="badge @GetBadge(log.EventCategory) me-1">@log.EventCategory</span>
+                                <span class="small">@log.EventType</span>
+                            </td>
+                            <td class="small text-muted text-truncate" style="max-width:130px;">@(log.UserEmail ?? "System")</td>
+                            <td class="small">
+                                @(log.Browser != null ? $"{log.Browser} · {log.OperatingSystem}" : "—")
+                                @if (log.DeviceType != null)
+                                { <span class="text-muted ms-1">(@log.DeviceType)</span> }
+                            </td>
+                            <td><code class="small">@(log.IpAddress ?? "—")</code></td>
+                            <td class="small text-muted text-nowrap">@log.CreatedAt.ToString("MMM d HH:mm:ss")</td>
+                            <td>
+                                @if (log.Success) { <span class="badge bg-success">✓</span> }
+                                else              { <span class="badge bg-danger" title="@log.FailureReason">✗</span> }
+                            </td>
+                        </tr>
+                        @if (_selected == log)
+                        {
+                            <tr class="bg-light">
+                                <td colspan="7" class="p-3">
+                                    <div class="row g-3 small">
+                                        <div class="col-md-4">
+                                            <strong class="d-block text-muted mb-1">SESSION</strong>
+                                            <div>IP: <code>@(log.IpAddress ?? "—")</code></div>
+                                            <div>Browser: @(log.Browser ?? "—") @log.BrowserVersion</div>
+                                            <div>OS: @(log.OperatingSystem ?? "—") @log.OsVersion</div>
+                                            <div>Device: @(log.DeviceType ?? "—")@(log.DeviceBrand != null ? $" · {log.DeviceBrand}" : "")</div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <strong class="d-block text-muted mb-1">EVENT</strong>
+                                            <div>ID: <code>#@log.Id</code></div>
+                                            <div>Time: @log.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss") UTC</div>
+                                            <div>Resource: @(log.ResourceType ?? "—") @log.ResourceId</div>
+                                            @if (!string.IsNullOrEmpty(log.FailureReason))
+                                            { <div class="text-danger">Reason: @log.FailureReason</div> }
+                                        </div>
+                                        <div class="col-md-4">
+                                            <strong class="d-block text-muted mb-1">USER AGENT</strong>
+                                            <div class="text-break font-monospace" style="font-size:10px;">@(log.UserAgent ?? "—")</div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center px-4 py-3 border-top">
+            <small class="text-muted">Page @_page of @_totalPages</small>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-secondary" disabled="@(_page <= 1)" @onclick="() => ChangePage(_page-1)">← Prev</button>
+                <button class="btn btn-sm btn-outline-secondary" disabled="@(_page >= _totalPages)" @onclick="() => ChangePage(_page+1)">Next →</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<AuditLog> _logs = new();
+    private List<Organization> _orgs = new();
+    private AuditLog? _selected;
+    private string _filterCategory = "";
+    private int _filterOrg, _page = 1, _pageSize = 30;
+    private long _totalCount;
+    private int _totalPages => (int)Math.Ceiling((double)_totalCount / _pageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _orgs = await Db.Organizations.OrderBy(o => o.Name).ToListAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        int? orgId = _filterOrg > 0 ? _filterOrg : null;
+        _totalCount = await AuditSvc.GetLogCountAsync(orgId);
+        _logs = await AuditSvc.GetLogsAsync(orgId, _page, _pageSize,
+            _filterCategory.Length > 0 ? _filterCategory : null);
+
+        // Hydrate org names
+        var orgIds = _logs.Select(l => l.OrganizationId).Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
+        var orgs   = await Db.Organizations.Where(o => orgIds.Contains(o.Id)).ToDictionaryAsync(o => o.Id);
+        foreach (var l in _logs)
+            if (l.OrganizationId.HasValue && orgs.TryGetValue(l.OrganizationId.Value, out var org))
+                l.Organization = org;
+    }
+
+    private async Task ChangePage(int page) { _page = page; await LoadAsync(); }
+
+    private static string GetBadge(string cat) => cat switch
+    {
+        "auth"  => "bg-primary",
+        "oauth" => "bg-warning text-dark",
+        "admin" => "bg-info text-dark",
+        "waf"   => "bg-danger",
+        _       => "bg-secondary",
+    };
+}

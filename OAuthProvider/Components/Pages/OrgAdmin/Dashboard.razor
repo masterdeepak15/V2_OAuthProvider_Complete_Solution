@@ -1,0 +1,157 @@
+@page "/"
+@using OAuthProviderV2.Services.Audit
+@inject ApplicationDbContext Db
+@inject IAuditService AuditSvc
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Dashboard — OAuth Provider</PageTitle>
+
+@if (_isSuperAdmin)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary"></div>
+        <p class="mt-2 text-muted">Redirecting to Super Admin portal…</p>
+    </div>
+    return;
+}
+
+<div class="mb-4">
+    <h4 class="fw-bold">Dashboard</h4>
+    <p class="text-muted mb-0">Organization overview</p>
+</div>
+
+@if (_orgId == 0)
+{
+    <div class="alert alert-warning">Could not determine your organization. Please sign out and back in.</div>
+}
+else
+{
+    <!-- Stats row -->
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#eef2ff;color:#6366f1;">👥</div>
+                <div>
+                    <div class="stat-value">@_stats.users</div>
+                    <div class="stat-label">Users</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#f0fdf4;color:#22c55e;">📁</div>
+                <div>
+                    <div class="stat-value">@_stats.projects</div>
+                    <div class="stat-label">Projects</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#fefce8;color:#f59e0b;">🔑</div>
+                <div>
+                    <div class="stat-value">@_stats.clients</div>
+                    <div class="stat-label">OAuth Clients</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#fff1f2;color:#f43f5e;">🪙</div>
+                <div>
+                    <div class="stat-value">@_stats.activeTokens</div>
+                    <div class="stat-label">Active Tokens</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent audit logs -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white d-flex align-items-center justify-content-between py-3">
+            <h6 class="mb-0 fw-semibold">Recent Activity</h6>
+            <a href="/audit" class="btn btn-sm btn-outline-primary">View All Logs →</a>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="px-4">Event</th>
+                            <th>User</th>
+                            <th>Browser / OS</th>
+                            <th>IP</th>
+                            <th>Time</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var log in _recentLogs)
+                        {
+                            <tr>
+                                <td class="px-4">
+                                    <span class="badge rounded-pill @GetCategoryBadge(log.EventCategory) me-1">@log.EventCategory</span>
+                                    <span class="small">@log.EventType</span>
+                                </td>
+                                <td class="small text-muted">@(log.UserEmail ?? "—")</td>
+                                <td class="small text-muted">
+                                    @(log.Browser != null ? $"{log.Browser} · {log.OperatingSystem}" : "—")
+                                </td>
+                                <td><code class="small">@(log.IpAddress ?? "—")</code></td>
+                                <td class="small text-muted">@log.CreatedAt.ToString("MMM d HH:mm")</td>
+                                <td>
+                                    @if (log.Success)
+                                    { <span class="badge bg-success">OK</span> }
+                                    else
+                                    { <span class="badge bg-danger" title="@log.FailureReason">Failed</span> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private int _orgId;
+    private bool _isSuperAdmin;
+    private (int users, int projects, int clients, int activeTokens) _stats;
+    private List<AuditLog> _recentLogs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _isSuperAdmin = auth.User.IsInRole("SuperAdmin");
+        if (_isSuperAdmin)
+        {
+            Nav.NavigateTo("/super", forceLoad: false);
+            return;
+        }
+
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Email == auth.User.Identity!.Name);
+        if (user?.OrganizationId == null) return;
+        _orgId = user.OrganizationId.Value;
+
+        _stats = (
+            users:        await Db.OrganizationUsers.CountAsync(ou => ou.OrganizationId == _orgId),
+            projects:     await Db.Projects.CountAsync(p => p.OrganizationId == _orgId),
+            clients:      await Db.OAuthClients.CountAsync(c => c.OrganizationId == _orgId),
+            activeTokens: await Db.AccessTokens.CountAsync(t => t.OrganizationId == _orgId && !t.IsRevoked && t.ExpiresAt > DateTime.UtcNow)
+        );
+
+        _recentLogs = await AuditSvc.GetLogsAsync(_orgId, pageSize: 15);
+    }
+
+    private static string GetCategoryBadge(string cat) => cat switch
+    {
+        "auth"   => "bg-primary bg-opacity-10 text-primary",
+        "oauth"  => "bg-warning bg-opacity-10 text-warning",
+        "admin"  => "bg-info bg-opacity-10 text-info",
+        "waf"    => "bg-danger bg-opacity-10 text-danger",
+        _        => "bg-secondary bg-opacity-10 text-secondary",
+    };
+}

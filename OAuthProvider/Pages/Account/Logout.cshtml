@@ -1,0 +1,14 @@
+@page "/Account/Logout"
+@model OAuthProviderV2.Pages.Account.LogoutModel
+@{ Layout = null; }
+<!DOCTYPE html>
+<html>
+<head><title>Signing out…</title></head>
+<body>
+<form id="f" method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="signOutUserId" value="@User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value"/>
+</form>
+<script>document.getElementById('f').submit();</script>
+</body>
+</html>

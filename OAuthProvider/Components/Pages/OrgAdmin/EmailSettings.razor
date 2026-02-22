@@ -1,0 +1,182 @@
+@page "/settings/email"
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
+@using OAuthProviderV2.Services.Email
+@inject IEmailService EmailSvc
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "OrgAdmin")]
+
+<PageTitle>Email Settings — OAuth Provider</PageTitle>
+
+<div class="mb-4">
+    <h4 class="fw-bold">Email Settings</h4>
+    <p class="text-muted mb-0">Configure email delivery and alert notifications for your organization</p>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{ <div class="alert alert-@(_isError ? "danger" : "success") small">@_message</div> }
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">SMTP Configuration</h6></div>
+    <div class="card-body">
+        <div class="form-check form-switch mb-3">
+            <input type="checkbox" class="form-check-input" id="useDefault" @bind="_useDefault"/>
+            <label class="form-check-label fw-medium" for="useDefault">
+                Use platform default email provider
+            </label>
+            <div class="form-text">When enabled, emails are sent via the OAuth Provider's configured SMTP server.</div>
+        </div>
+
+        @if (!_useDefault)
+        {
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label fw-medium">SMTP Host</label>
+                    <input class="form-control" @bind="_host" placeholder="smtp.gmail.com"/>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-medium">Port</label>
+                    <input type="number" class="form-control" @bind="_port"/>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <div class="form-check mb-2">
+                        <input type="checkbox" class="form-check-input" id="ssl" @bind="_ssl"/>
+                        <label class="form-check-label" for="ssl">SSL</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Username</label>
+                    <input class="form-control" @bind="_username"/>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Password</label>
+                    <div class="input-group">
+                        <input type="@(_showPass ? "text" : "password")" class="form-control" @bind="_password"/>
+                        <button class="btn btn-outline-secondary" type="button" @onclick="() => _showPass = !_showPass">
+                            @(_showPass ? "Hide" : "Show")
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">From Email</label>
+                    <input type="email" class="form-control" @bind="_fromEmail"/>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">From Name</label>
+                    <input class="form-control" @bind="_fromName"/>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Notification Alerts</h6></div>
+    <div class="card-body">
+        <div class="form-check form-switch mb-3">
+            <input type="checkbox" class="form-check-input" id="alerts" @bind="_alertsEnabled"/>
+            <label class="form-check-label fw-medium" for="alerts">Enable email alerts</label>
+        </div>
+        @if (_alertsEnabled)
+        {
+            <div class="ms-4">
+                <div class="form-check mb-2">
+                    <input type="checkbox" class="form-check-input" id="loginAlerts" @bind="_loginAlerts"/>
+                    <label class="form-check-label" for="loginAlerts">New login alerts — notify users when they sign in from a new session</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input type="checkbox" class="form-check-input" id="secAlerts" @bind="_securityAlerts"/>
+                    <label class="form-check-label" for="secAlerts">Security alerts — account lockouts, suspicious activity</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input type="checkbox" class="form-check-input" id="wafAlerts" @bind="_wafAlerts"/>
+                    <label class="form-check-label" for="wafAlerts">WAF alerts — notify on critical WAF events affecting your org</label>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="d-flex gap-2">
+    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">
+        @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+        Save Settings
+    </button>
+    <button class="btn btn-outline-secondary" @onclick="TestAsync" disabled="@_testing">
+        @if (_testing) { <span class="spinner-border spinner-border-sm me-1"></span> }
+        Send Test Email
+    </button>
+</div>
+
+@code {
+    private int _orgId;
+    private bool _useDefault = true, _ssl = true, _alertsEnabled = true, _loginAlerts = true, _securityAlerts = true, _wafAlerts = true, _showPass, _saving, _testing;
+    private string _host = "", _username = "", _password = "", _fromEmail = "", _fromName = "";
+    private int _port = 587;
+    private string _message = "";
+    private bool _isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Email == auth.User.Identity!.Name);
+        if (user?.OrganizationId == null) return;
+        _orgId = user.OrganizationId.Value;
+
+        var config = await Db.OrganizationEmailConfigs.FirstOrDefaultAsync(c => c.OrganizationId == _orgId);
+        if (config != null)
+        {
+            _useDefault      = config.UseDefaultProvider;
+            _port            = config.SmtpPort;
+            _ssl             = config.SmtpUseSsl;
+            _host            = config.SmtpHost ?? "";
+            _username        = config.SmtpUsername ?? "";
+            _fromEmail       = config.FromEmail ?? "";
+            _fromName        = config.FromName ?? "";
+            _alertsEnabled   = config.AlertsEnabled;
+            _loginAlerts     = config.LoginAlerts;
+            _securityAlerts  = config.SecurityAlerts;
+            _wafAlerts       = config.WafAlerts;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        try
+        {
+            var config = await Db.OrganizationEmailConfigs.FirstOrDefaultAsync(c => c.OrganizationId == _orgId);
+            if (config == null)
+            {
+                config = new OrganizationEmailConfig { OrganizationId = _orgId };
+                Db.OrganizationEmailConfigs.Add(config);
+            }
+            config.UseDefaultProvider    = _useDefault;
+            config.SmtpHost              = _useDefault ? null : _host;
+            config.SmtpPort              = _port;
+            config.SmtpUseSsl            = _ssl;
+            config.SmtpUsername          = _useDefault ? null : _username;
+            config.SmtpPasswordEncrypted = _useDefault ? null : EmailService.EncryptPassword(_password);
+            config.FromEmail             = _useDefault ? null : _fromEmail;
+            config.FromName              = _useDefault ? null : _fromName;
+            config.AlertsEnabled         = _alertsEnabled;
+            config.LoginAlerts           = _loginAlerts;
+            config.SecurityAlerts        = _securityAlerts;
+            config.WafAlerts             = _wafAlerts;
+            config.UpdatedAt             = DateTime.UtcNow;
+
+            await Db.SaveChangesAsync();
+            _message = "Email settings saved."; _isError = false;
+        }
+        catch (Exception ex) { _message = ex.Message; _isError = true; }
+        _saving = false;
+    }
+
+    private async Task TestAsync()
+    {
+        _testing = true;
+        var ok = await EmailSvc.TestConfigAsync(_orgId);
+        _message = ok ? "Test email sent!" : "Failed. Check SMTP settings.";
+        _isError = !ok;
+        _testing = false;
+    }
+}

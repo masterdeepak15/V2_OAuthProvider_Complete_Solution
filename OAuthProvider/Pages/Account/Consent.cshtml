@@ -1,0 +1,151 @@
+@page "/Account/Consent"
+@model OAuthProviderV2.Pages.Account.ConsentModel
+@{ Layout = null; }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Authorize — @Model.ClientName</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="/app.css"/>
+    <style>
+        body { background: #f8f9fc; }
+        .consent-card {
+            width: 480px; max-width: 95vw;
+            border-radius: 16px; border: none;
+            box-shadow: 0 4px 28px rgba(0,0,0,.11);
+        }
+        .consent-header {
+            padding: 36px 36px 0;
+            text-align: center;
+        }
+        .app-icon {
+            width: 64px; height: 64px; border-radius: 16px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 30px; margin: 0 auto 12px;
+            box-shadow: 0 4px 12px rgba(99,102,241,.3);
+        }
+        .provider-logo {
+            width: 24px; height: 24px; border-radius: 6px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 13px; vertical-align: middle; margin-right: 4px;
+        }
+        .arrow-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #f3f4f6; border-radius: 99px;
+            padding: 4px 12px; font-size: 13px;
+            color: #374151; margin: 8px 0 16px;
+        }
+        .scope-item {
+            display: flex; align-items: flex-start; gap: 12px;
+            padding: 10px 0;
+        }
+        .scope-icon {
+            width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 17px;
+        }
+        .scope-name   { font-weight: 600; font-size: 14px; }
+        .scope-desc   { font-size: 12px; color: #6b7280; }
+        .user-chip {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: #f3f4f6; border-radius: 99px;
+            padding: 6px 14px 6px 6px; margin-bottom: 16px;
+        }
+        .user-avatar {
+            width: 28px; height: 28px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 12px; color: #fff;
+        }
+        .btn-allow {
+            background: linear-gradient(135deg,#6366f1,#8b5cf6);
+            border: none; border-radius: 10px; font-weight: 600; padding: 11px;
+        }
+        .btn-allow:hover { opacity: .92; }
+        .btn-deny {
+            border-radius: 10px; padding: 11px; font-weight: 500;
+        }
+        .footer-note { font-size: 11px; color: #9ca3af; }
+        .switch-account-link {
+            color: #6366f1; font-size: 12px; text-decoration: none; cursor: pointer;
+        }
+        .switch-account-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+<div class="min-vh-100 d-flex align-items-center justify-content: center p-3" style="justify-content:center;">
+<div class="consent-card card">
+    <div class="consent-header">
+        <div class="app-icon">🔑</div>
+        <p class="text-muted small mb-1">
+            <span class="provider-logo">🔐</span>OAuth Provider
+        </p>
+        <h5 class="fw-bold mb-0">@Model.ClientName</h5>
+        <p class="text-muted small mb-3">wants to access your account</p>
+
+        @* Show which account is being authorized *@
+        <div class="d-flex align-items: center; justify-content: center;">
+            <div class="user-chip mx-auto">
+                <div class="user-avatar" style="background:@Model.UserColor;">@Model.UserInitials</div>
+                <span class="small fw-medium">@Model.UserEmail</span>
+            </div>
+        </div>
+
+        @* Allow switching account *@
+        <form method="post" asp-page-handler="SwitchAccount" class="d-inline">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnParams" value="@Model.ReturnParams"/>
+            <button type="submit" class="switch-account-link border-0 bg-transparent mb-2">
+                Not you? Switch account
+            </button>
+        </form>
+    </div>
+
+    <div class="px-4 pb-2 pt-3">
+        @if (!string.IsNullOrEmpty(Model.ClientDescription))
+        {
+            <p class="text-muted small mb-3 text-center">@Model.ClientDescription</p>
+        }
+
+        <hr class="my-2"/>
+        <p class="fw-semibold small text-muted mb-2" style="letter-spacing:.4px;">THIS APP WILL BE ABLE TO:</p>
+
+        @foreach (var scope in Model.ScopeDetails)
+        {
+            <div class="scope-item">
+                <div class="scope-icon" style="background:@scope.BgColor;">@scope.Icon</div>
+                <div>
+                    <div class="scope-name">@scope.Name</div>
+                    <div class="scope-desc">@scope.Description</div>
+                </div>
+            </div>
+        }
+        <hr class="my-2"/>
+    </div>
+
+    <div class="px-4 pb-4">
+        <form method="post" asp-page-handler="Allow">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnParams" value="@Model.ReturnParams"/>
+            <div class="d-flex gap-2">
+                <a href="@Model.DenyRedirect" class="btn btn-outline-secondary btn-deny flex-grow-1">
+                    Cancel
+                </a>
+                <button type="submit" class="btn btn-allow btn-primary flex-grow-1 text-white">
+                    Allow Access
+                </button>
+            </div>
+        </form>
+
+        <p class="footer-note text-center mt-3">
+            By clicking Allow, you allow <strong>@Model.ClientName</strong> to use your information in accordance with their
+            privacy policy. You can revoke access at any time from your account settings.
+        </p>
+    </div>
+</div>
+</div>
+</body>
+</html>

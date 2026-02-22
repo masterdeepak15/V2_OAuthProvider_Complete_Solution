@@ -1,0 +1,8 @@
+@inject NavigationManager Nav
+@code {
+    protected override void OnInitialized()
+    {
+        var encoded = Uri.EscapeDataString(Nav.Uri);
+        Nav.NavigateTo($"/Account/Login?ReturnUrl={encoded}", forceLoad: true);
+    }
+}

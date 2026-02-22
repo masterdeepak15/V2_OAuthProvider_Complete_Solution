@@ -1,0 +1,221 @@
+@page "/settings/waf"
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "OrgAdmin")]
+
+<PageTitle>WAF Rules — OAuth Provider</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">WAF Rules</h4>
+        <p class="text-muted mb-0">Custom firewall rules for your organization's traffic</p>
+    </div>
+    <button class="btn btn-primary" @onclick="() => _showCreate = true">+ Add Rule</button>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{ <div class="alert alert-@(_isError ? "danger" : "success") small mb-3">@_message</div> }
+
+<!-- Create rule -->
+@if (_showCreate)
+{
+    <div class="card border-0 shadow-sm border-start border-primary border-3 mb-4">
+        <div class="card-body">
+            <h6 class="fw-semibold mb-3">New Rule</h6>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label small fw-medium">Rule Type</label>
+                    <select class="form-select" @bind="_ruleType">
+                        <option value="ip_block">Block IP address</option>
+                        <option value="ip_allow">Allow IP (bypass WAF)</option>
+                        <option value="ua_block">Block User-Agent</option>
+                        <option value="path_block">Block URL Path</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-medium">Pattern / Value</label>
+                    <input class="form-control" @bind="_rulePattern" placeholder="e.g. 192.168.1.1 or /admin/*"/>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-medium">Name</label>
+                    <input class="form-control" @bind="_ruleName" placeholder="Rule description"/>
+                </div>
+                <div class="col-12">
+                    <label class="form-label small fw-medium">Notes (optional)</label>
+                    <input class="form-control" @bind="_ruleNotes" placeholder="Why this rule exists"/>
+                </div>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+                <button class="btn btn-primary" @onclick="CreateRuleAsync">Add Rule</button>
+                <button class="btn btn-outline-secondary" @onclick="() => _showCreate = false">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Rules table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="px-4">Name</th>
+                        <th>Type</th>
+                        <th>Pattern</th>
+                        <th>Notes</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _rules)
+                    {
+                        <tr>
+                            <td class="px-4 fw-medium small">@r.Name</td>
+                            <td><span class="badge @GetTypeBadge(r.RuleType)">@r.RuleType.Replace("_"," ")</span></td>
+                            <td><code class="small">@r.Pattern</code></td>
+                            <td class="small text-muted">@(r.Notes ?? "—")</td>
+                            <td>
+                                @if (r.IsEnabled)
+                                { <span class="badge bg-success">Active</span> }
+                                else
+                                { <span class="badge bg-secondary">Disabled</span> }
+                            </td>
+                            <td class="small text-muted">@r.CreatedAt.ToString("MMM d, yyyy")</td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    <button class="btn btn-xs btn-outline-secondary"
+                                            @onclick="() => ToggleRuleAsync(r.Id)">
+                                        @(r.IsEnabled ? "Disable" : "Enable")
+                                    </button>
+                                    <button class="btn btn-xs btn-outline-danger"
+                                            @onclick="() => DeleteRuleAsync(r.Id)">Delete</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Recent WAF events for this org -->
+<div class="mt-4">
+    <h6 class="fw-semibold mb-3">Recent WAF Events (your org traffic)</h6>
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="px-4">IP</th><th>Threat</th><th>Level</th><th>Path</th><th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var e in _recentEvents)
+                        {
+                            <tr>
+                                <td class="px-4"><code class="small">@e.IpAddress</code></td>
+                                <td><span class="badge bg-danger small">@e.ThreatType.Replace("_"," ")</span></td>
+                                <td><span class="badge @GetLevelBadge(e.ThreatLevel) small">@e.ThreatLevel</span></td>
+                                <td class="small">@e.RequestMethod @e.RequestPath</td>
+                                <td class="small text-muted">@e.CreatedAt.ToString("HH:mm:ss")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int _orgId;
+    private List<WafRule> _rules = new();
+    private List<WafEvent> _recentEvents = new();
+    private bool _showCreate;
+    private string _ruleType = "ip_block", _rulePattern = "", _ruleName = "", _ruleNotes = "";
+    private string _message = "";
+    private bool _isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Email == auth.User.Identity!.Name);
+        if (user?.OrganizationId == null) return;
+        _orgId = user.OrganizationId.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _rules = await Db.WafRules
+            .Where(r => r.OrganizationId == _orgId)
+            .OrderByDescending(r => r.CreatedAt)
+            .ToListAsync();
+
+        _recentEvents = await Db.WafEvents
+            .Where(e => e.OrganizationId == _orgId || e.OrganizationId == null)
+            .OrderByDescending(e => e.CreatedAt)
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private async Task CreateRuleAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_rulePattern) || string.IsNullOrWhiteSpace(_ruleName))
+        { _message = "Name and pattern are required."; _isError = true; return; }
+
+        Db.WafRules.Add(new WafRule
+        {
+            OrganizationId = _orgId,
+            Name           = _ruleName,
+            RuleType       = _ruleType,
+            Pattern        = _rulePattern,
+            Notes          = _ruleNotes,
+            IsEnabled      = true,
+            IsBlock        = _ruleType != "ip_allow",
+        });
+        await Db.SaveChangesAsync();
+        _message = "Rule added."; _isError = false;
+        _showCreate = false;
+        _rulePattern = _ruleName = _ruleNotes = "";
+        await LoadAsync();
+    }
+
+    private async Task ToggleRuleAsync(int id)
+    {
+        var r = await Db.WafRules.FindAsync(id);
+        if (r == null) return;
+        r.IsEnabled = !r.IsEnabled;
+        await Db.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private async Task DeleteRuleAsync(int id)
+    {
+        var r = await Db.WafRules.FindAsync(id);
+        if (r != null) { Db.WafRules.Remove(r); await Db.SaveChangesAsync(); }
+        await LoadAsync();
+    }
+
+    private static string GetTypeBadge(string t) => t switch
+    {
+        "ip_block"   => "bg-danger",
+        "ip_allow"   => "bg-success",
+        "ua_block"   => "bg-warning text-dark",
+        "path_block" => "bg-info text-dark",
+        _            => "bg-secondary",
+    };
+
+    private static string GetLevelBadge(string l) => l switch
+    {
+        "critical" => "bg-danger",
+        "high"     => "bg-warning text-dark",
+        "medium"   => "bg-info text-dark",
+        _          => "bg-secondary",
+    };
+}

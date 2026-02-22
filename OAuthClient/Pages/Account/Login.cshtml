@@ -1,0 +1,94 @@
+@page
+@model OAuthClient.Pages.Account.LoginModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign In — Demo App</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="/app.css" />
+</head>
+<body class="bg-light">
+
+<div class="min-vh-100 d-flex align-items-center justify-content-center">
+    <div class="card border-0 shadow-lg" style="width:460px;max-width:95vw;">
+        <div class="card-body p-5">
+
+            <!-- Logo / branding -->
+            <div class="text-center mb-5">
+                <div class="d-inline-flex align-items-center justify-content-center rounded-3 mb-3"
+                     style="width:64px;height:64px;background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+                    <svg width="32" height="32" fill="white" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10
+                                 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4
+                                 0h-2V8h2v8z"/>
+                    </svg>
+                </div>
+                <h3 class="fw-bold mb-1">Welcome to Demo App</h3>
+                <p class="text-muted">Sign in with your OAuth Provider account</p>
+            </div>
+
+            @if (!string.IsNullOrEmpty(Model.Error))
+            {
+                <div class="alert alert-danger d-flex align-items-center gap-2 mb-4">
+                    <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10
+                                 10-4.48 10-10S17.52 2 12 2zm1
+                                 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                    </svg>
+                    <span>@Model.Error</span>
+                </div>
+            }
+
+            <!-- The only button — redirects to the OAuth Provider -->
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+
+                <button type="submit"
+                        class="btn btn-lg w-100 fw-semibold d-flex align-items-center justify-content-center gap-3"
+                        style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;padding:14px;">
+                    <svg width="22" height="22" fill="white" viewBox="0 0 24 24">
+                        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12
+                                 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                    </svg>
+                    Continue with OAuth Provider
+                </button>
+            </form>
+
+            <div class="text-center mt-4">
+                <small class="text-muted">
+                    You'll be redirected to the OAuth Provider to sign in,
+                    then brought back here automatically.
+                </small>
+            </div>
+
+            <!-- What happens explanation -->
+            <div class="mt-4 p-3 bg-light rounded-3 border">
+                <p class="mb-2 small fw-semibold text-muted">WHAT HAPPENS NEXT</p>
+                <div class="d-flex flex-column gap-2">
+                    <div class="d-flex align-items-start gap-2 small">
+                        <span class="badge bg-primary rounded-circle" style="width:20px;height:20px;font-size:10px;flex-shrink:0;">1</span>
+                        <span>You'll sign in at the OAuth Provider (port 5000)</span>
+                    </div>
+                    <div class="d-flex align-items-start gap-2 small">
+                        <span class="badge bg-primary rounded-circle" style="width:20px;height:20px;font-size:10px;flex-shrink:0;">2</span>
+                        <span>Provider redirects back here with an auth code</span>
+                    </div>
+                    <div class="d-flex align-items-start gap-2 small">
+                        <span class="badge bg-primary rounded-circle" style="width:20px;height:20px;font-size:10px;flex-shrink:0;">3</span>
+                        <span>This app exchanges the code for your profile</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

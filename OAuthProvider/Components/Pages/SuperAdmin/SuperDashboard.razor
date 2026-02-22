@@ -1,0 +1,134 @@
+@* SuperAdmin Dashboard *@
+@page "/super"
+@inject ApplicationDbContext Db
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SuperAdmin")]
+
+<PageTitle>Platform Overview — OAuth Provider</PageTitle>
+
+<div class="mb-4">
+    <h4 class="fw-bold">Platform Overview</h4>
+    <p class="text-muted mb-0">OAuth Provider super-admin control panel</p>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:#eef2ff;color:#6366f1;">🏢</div>
+            <div>
+                <div class="stat-value">@_orgCount</div>
+                <div class="stat-label">Organizations</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:#f0fdf4;color:#22c55e;">👥</div>
+            <div>
+                <div class="stat-value">@_userCount</div>
+                <div class="stat-label">Total Users</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:#fefce8;color:#f59e0b;">🛡️</div>
+            <div>
+                <div class="stat-value">@_wafToday</div>
+                <div class="stat-label">WAF Blocks (24h)</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:#fff1f2;color:#f43f5e;">🪙</div>
+            <div>
+                <div class="stat-value">@_activeTokens</div>
+                <div class="stat-label">Active Tokens</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent WAF Events -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-semibold">Recent WAF Events</h6>
+        <a href="/super/waf" class="btn btn-sm btn-outline-primary">View All →</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr><th class="px-4">IP</th><th>Path</th><th>Threat</th><th>Level</th><th>Time</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var e in _recentWaf)
+                    {
+                        <tr>
+                            <td class="px-4"><code class="small">@e.IpAddress</code></td>
+                            <td class="small">@e.RequestMethod @e.RequestPath</td>
+                            <td><span class="badge bg-danger">@e.ThreatType</span></td>
+                            <td><span class="badge @GetLevelBadge(e.ThreatLevel)">@e.ThreatLevel</span></td>
+                            <td class="small text-muted">@e.CreatedAt.ToString("HH:mm:ss")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Platform health -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Platform Health</h6></div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3 text-center">
+                <div style="font-size:32px;">✅</div>
+                <div class="fw-semibold small">Database</div>
+                <div class="text-success small">Connected</div>
+            </div>
+            <div class="col-md-3 text-center">
+                <div style="font-size:32px;">✅</div>
+                <div class="fw-semibold small">WAF</div>
+                <div class="text-success small">Active</div>
+            </div>
+            <div class="col-md-3 text-center">
+                <div style="font-size:32px;">@(_emailConfigured ? "✅" : "⚠️")</div>
+                <div class="fw-semibold small">Email</div>
+                <div class="@(_emailConfigured ? "text-success" : "text-warning") small">
+                    @(_emailConfigured ? "Configured" : "Not configured")
+                </div>
+            </div>
+            <div class="col-md-3 text-center">
+                <div style="font-size:32px;">✅</div>
+                <div class="fw-semibold small">OAuth Endpoints</div>
+                <div class="text-success small">Operational</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private long _orgCount, _userCount, _wafToday, _activeTokens;
+    private bool _emailConfigured;
+    private List<WafEvent> _recentWaf = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _orgCount    = await Db.Organizations.CountAsync();
+        _userCount   = await Db.Users.CountAsync();
+        _wafToday    = await Db.WafEvents.CountAsync(w => w.CreatedAt >= DateTime.UtcNow.AddHours(-24));
+        _activeTokens = await Db.AccessTokens.CountAsync(t => !t.IsRevoked && t.ExpiresAt > DateTime.UtcNow);
+        _emailConfigured = await Db.PlatformEmailConfigs.AnyAsync(c => c.IsConfigured);
+        _recentWaf   = await Db.WafEvents.OrderByDescending(e => e.CreatedAt).Take(10).ToListAsync();
+    }
+
+    private static string GetLevelBadge(string level) => level switch
+    {
+        "critical" => "bg-danger",
+        "high"     => "bg-warning text-dark",
+        "medium"   => "bg-info text-dark",
+        _          => "bg-secondary",
+    };
+}

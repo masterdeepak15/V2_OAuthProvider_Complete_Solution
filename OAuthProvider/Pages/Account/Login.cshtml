@@ -1,0 +1,218 @@
+@page "/Account/Login"
+@model OAuthProviderV2.Pages.Account.LoginModel
+@{ Layout = null; }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Sign In — OAuth Provider</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="/app.css"/>
+    <style>
+        body { background: #f8f9fc; }
+        .auth-card {
+            width: 460px; max-width: 95vw;
+            border-radius: 16px; border: none;
+            box-shadow: 0 4px 24px rgba(0,0,0,.10); overflow: hidden;
+        }
+        .account-tile {
+            display: flex; align-items: center; gap: 14px;
+            padding: 14px 20px; cursor: pointer;
+            border: none; background: none; width: 100%;
+            text-align: left; transition: background .15s;
+            text-decoration: none; color: inherit;
+        }
+        .account-tile:hover { background: #f3f4f6; color: inherit; }
+        .acct-avatar {
+            width: 44px; height: 44px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 17px; color: #fff; flex-shrink: 0;
+        }
+        .acct-name  { font-weight: 600; font-size: 14px; line-height: 1.3; }
+        .acct-email { font-size: 12px; color: #6b7280; }
+        .acct-badge {
+            margin-left: auto; flex-shrink: 0; font-size: 10px; font-weight: 600;
+            background: #e0e7ff; color: #4f46e5; padding: 2px 8px; border-radius: 99px;
+        }
+        .auth-header { padding: 36px 36px 0; text-align: center; }
+        .auth-logo-circle {
+            width: 56px; height: 56px; border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 26px; margin: 0 auto 16px;
+        }
+        .auth-body { padding: 24px 36px 36px; }
+        .form-control-auth {
+            border-radius: 10px; border: 1.5px solid #e5e7eb;
+            padding: 11px 14px; font-size: 14px; transition: border-color .15s;
+        }
+        .form-control-auth:focus {
+            border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.15); outline: none;
+        }
+        .btn-signin {
+            background: linear-gradient(135deg,#6366f1,#8b5cf6);
+            border: none; border-radius: 10px; font-weight: 600; padding: 11px; font-size: 15px;
+        }
+        .btn-signin:hover { opacity:.92; }
+        .add-account-tile {
+            display: flex; align-items: center; gap: 14px;
+            padding: 12px 20px; cursor: pointer; width: 100%;
+            border: none; background: none; text-align: left;
+            color: #6366f1; font-weight: 500; font-size: 14px; transition: background .15s;
+        }
+        .add-account-tile:hover { background: #f3f4f6; }
+        .add-icon {
+            width: 44px; height: 44px; border-radius: 50%;
+            border: 2px dashed #c7d2fe;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px; color: #6366f1;
+        }
+        .section-sep { height: 1px; background: #f0f0f0; margin: 0 20px; }
+        .divider-text {
+            display: flex; align-items: center; gap: 12px;
+            color: #9ca3af; font-size: 12px; margin: 16px 0;
+        }
+        .divider-text::before, .divider-text::after {
+            content: ''; flex: 1; height: 1px; background: #e5e7eb;
+        }
+        .back-link {
+            display: inline-flex; align-items: center; gap: 6px;
+            color: #6b7280; font-size: 13px; text-decoration: none;
+            margin-bottom: 16px; border: none; background: none; padding: 0; cursor: pointer;
+        }
+        .back-link:hover { color: #374151; }
+    </style>
+</head>
+<body>
+<div class="min-vh-100 d-flex align-items-center justify-content-center p-3">
+<div class="auth-card card">
+
+@if (Model.ViewMode == "picker")
+{
+    <div class="auth-header pb-3">
+        <div class="auth-logo-circle">🔐</div>
+        <h5 class="fw-bold mb-1">Choose an account</h5>
+        <p class="text-muted small mb-0">to continue to OAuth Provider</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+    { <div class="mx-4 mt-3 alert alert-danger py-2 small">@Model.ErrorMessage</div> }
+
+    <div class="pt-2 pb-1">
+        @foreach (var acct in Model.SavedAccounts)
+        {
+            <form method="post" asp-page-handler="SwitchAccount">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="switchUserId" value="@acct.UserId"/>
+                <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl"/>
+                <button type="submit" class="account-tile">
+                    <div class="acct-avatar" style="background:@acct.AvatarColor;">
+                        @(acct.AvatarInitials ?? acct.Email.Substring(0,1).ToUpper())
+                    </div>
+                    <div class="flex-grow-1 overflow-hidden">
+                        <div class="acct-name text-truncate">@(acct.FullName.Trim().Length > 0 ? acct.FullName : acct.Email)</div>
+                        <div class="acct-email text-truncate">@acct.Email</div>
+                        @if (acct.OrgName != null)
+                        { <div style="font-size:11px;color:#9ca3af;">@acct.OrgName</div> }
+                    </div>
+                    @if (acct.IsActive) { <span class="acct-badge">Active</span> }
+                </button>
+            </form>
+            <div class="section-sep"></div>
+        }
+
+        <button type="button" class="add-account-tile"
+                onclick="location.href='/Account/Login?mode=new&ReturnUrl=@Uri.EscapeDataString(Model.ReturnUrl ?? "/")'">
+            <div class="add-icon">+</div>
+            Use another account
+        </button>
+    </div>
+
+    <div class="px-4 pb-4 pt-2 text-center">
+        <form method="post" asp-page-handler="SignoutAll" class="d-inline">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl"/>
+            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                Sign out of all accounts
+            </button>
+        </form>
+    </div>
+}
+else
+{
+    <div class="auth-header">
+        <div class="auth-logo-circle">🔐</div>
+        <h5 class="fw-bold mb-1">Sign In</h5>
+        <p class="text-muted small mb-0">
+            @if (Model.ViewMode == "password")
+            { <text>Welcome back, @Model.Email</text> }
+            else
+            { <text>OAuth Provider Admin Portal</text> }
+        </p>
+    </div>
+    <div class="auth-body">
+        @if (Model.SavedAccounts.Any())
+        {
+            <a class="back-link" href="/Account/Login?ReturnUrl=@Uri.EscapeDataString(Model.ReturnUrl ?? "/")">
+                ← All accounts
+            </a>
+        }
+
+        @if (Request.Query["registered"] == "true")
+        { <div class="alert alert-success small py-2 mb-3"><strong>Organization created!</strong> Sign in below.</div> }
+
+        @if (Model.ShowVerificationPending)
+        { <div class="alert alert-warning small py-2 mb-3"><strong>⏳ Email not verified.</strong> Check your inbox, or ask your admin for the link.</div> }
+        else if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        { <div class="alert alert-danger py-2 small mb-3">@Model.ErrorMessage</div> }
+
+        @if (Model.ViewMode == "email")
+        {
+            <form method="post" asp-page-handler="Email">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl"/>
+                <div class="mb-3">
+                    <label class="form-label fw-medium small">Email address</label>
+                    <input type="email" name="Email" class="form-control form-control-auth"
+                           value="@Model.Email" placeholder="you@example.com" autocomplete="username" autofocus required/>
+                </div>
+                <button type="submit" class="btn btn-signin btn-primary w-100 text-white">Continue</button>
+            </form>
+        }
+
+        @if (Model.ViewMode == "password")
+        {
+            <form method="post" asp-page-handler="Password">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl"/>
+                <input type="hidden" name="Email" value="@Model.Email"/>
+                <div class="d-flex align-items-center gap-2 mb-4 px-3 py-2 rounded-3" style="background:#f3f4f6;">
+                    <div style="width:32px;height:32px;border-radius:50%;background:@Model.ActiveColor;
+                                display:flex;align-items:center;justify-content:center;
+                                font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">
+                        @(Model.Email?.Substring(0,1).ToUpper())
+                    </div>
+                    <span class="small fw-medium flex-grow-1">@Model.Email</span>
+                    <a href="/Account/Login?ReturnUrl=@Uri.EscapeDataString(Model.ReturnUrl ?? "/")" class="small text-muted text-decoration-none">Change</a>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-medium small">Password</label>
+                    <input type="password" name="Password" class="form-control form-control-auth"
+                           placeholder="••••••••" autocomplete="current-password" autofocus required/>
+                </div>
+                <button type="submit" class="btn btn-signin btn-primary w-100 text-white">Sign In</button>
+            </form>
+        }
+
+        <div class="divider-text mt-3"><span>or</span></div>
+        <div class="text-center">
+            <a href="/Account/Signup" class="small fw-semibold" style="color:#6366f1;">Create a new organization →</a>
+        </div>
+    </div>
+}
+
+</div>
+</div>
+</body>
+</html>

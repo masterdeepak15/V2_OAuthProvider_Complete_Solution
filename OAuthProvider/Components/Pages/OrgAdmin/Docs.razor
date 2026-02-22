@@ -1,0 +1,93 @@
+@page "/docs"
+@inject IConfiguration Config
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>API Docs — OAuth Provider</PageTitle>
+
+<div class="mb-4">
+    <h4 class="fw-bold">API Reference</h4>
+    <p class="text-muted mb-0">OAuth 2.0 / OpenID Connect endpoint documentation</p>
+</div>
+
+@{
+    var issuer = Config["Jwt:Issuer"] ?? "https://localhost:5000";
+}
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Discovery</h6></div>
+    <div class="card-body">
+        <code class="d-block">GET @issuer/.well-known/openid-configuration</code>
+        <p class="text-muted small mt-2 mb-0">Returns all endpoint URLs, supported scopes, grant types and PKCE methods.</p>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Authorization Code Flow</h6></div>
+    <div class="card-body">
+        <pre class="bg-light p-3 rounded small">GET @issuer/authorize
+  ?response_type=code
+  &amp;client_id=YOUR_CLIENT_ID
+  &amp;redirect_uri=https://yourapp.com/callback
+  &amp;scope=openid profile email
+  &amp;state=RANDOM_STATE
+  &amp;code_challenge=BASE64URL(SHA256(verifier))
+  &amp;code_challenge_method=S256</pre>
+        <pre class="bg-light p-3 rounded small">POST @issuer/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code
+&amp;code=AUTH_CODE
+&amp;redirect_uri=https://yourapp.com/callback
+&amp;client_id=YOUR_CLIENT_ID
+&amp;client_secret=YOUR_SECRET
+&amp;code_verifier=PKCE_VERIFIER</pre>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Client Credentials</h6></div>
+    <div class="card-body">
+        <pre class="bg-light p-3 rounded small">POST @issuer/token
+grant_type=client_credentials
+&amp;client_id=YOUR_CLIENT_ID
+&amp;client_secret=YOUR_SECRET</pre>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Token Response</h6></div>
+    <div class="card-body">
+        <pre class="bg-light p-3 rounded small">{
+  "access_token": "eyJhbGci...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "def502...",
+  "scope": "openid profile email"
+}</pre>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">UserInfo</h6></div>
+    <div class="card-body">
+        <pre class="bg-light p-3 rounded small">GET @issuer/userinfo
+Authorization: Bearer ACCESS_TOKEN</pre>
+        <pre class="bg-light p-3 rounded small">{
+  "sub": "user-id",
+  "email": "user@example.com",
+  "email_verified": true,
+  "given_name": "Jane",
+  "family_name": "Smith",
+  "name": "Jane Smith"
+}</pre>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Revoke Token</h6></div>
+    <div class="card-body">
+        <pre class="bg-light p-3 rounded small">POST @issuer/revoke
+token=ACCESS_OR_REFRESH_TOKEN</pre>
+        <p class="text-muted small mb-0">Always returns 200 OK (RFC 7009).</p>
+    </div>
+</div>

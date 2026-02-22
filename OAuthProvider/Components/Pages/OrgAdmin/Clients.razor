@@ -1,0 +1,103 @@
+@page "/clients"
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "OrgAdmin,OrgUser")]
+
+<PageTitle>OAuth Clients — OAuth Provider</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">OAuth Clients</h4>
+        <p class="text-muted mb-0">Applications registered to use your OAuth Provider</p>
+    </div>
+    <AuthorizeView Roles="OrgAdmin">
+        <a href="/clients/create" class="btn btn-primary">+ New Client</a>
+    </AuthorizeView>
+</div>
+
+@if (!_clients.Any())
+{
+    <div class="text-center py-5 text-muted">
+        <div style="font-size:48px;" class="mb-3">🔑</div>
+        <h6>No clients yet</h6>
+        <p class="small">Create your first OAuth client to start integrating applications.</p>
+        <a href="/clients/create" class="btn btn-primary">Create Client</a>
+    </div>
+}
+else
+{
+    @foreach (var (project, clients) in _clientsByProject)
+    {
+        <div class="mb-4">
+            <h6 class="fw-semibold text-muted mb-3">📁 @project</h6>
+            <div class="row g-3">
+                @foreach (var c in clients)
+                {
+                    <div class="col-md-6 col-xl-4">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-body">
+                                <div class="d-flex align-items-start justify-content-between mb-3">
+                                    <div>
+                                        <h6 class="fw-bold mb-1">@c.Name</h6>
+                                        @if (!string.IsNullOrEmpty(c.Description))
+                                        { <p class="text-muted small mb-0">@c.Description</p> }
+                                    </div>
+                                    <span class="badge @(c.IsEnabled ? "bg-success" : "bg-secondary")">
+                                        @(c.IsEnabled ? "Active" : "Disabled")
+                                    </span>
+                                </div>
+
+                                <!-- Client ID -->
+                                <div class="mb-2">
+                                    <label class="form-label mb-1" style="font-size:10px;font-weight:700;letter-spacing:.5px;color:#6b7280;">CLIENT ID</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control font-monospace" readonly value="@c.ClientId" style="font-size:11px;"/>
+                                    </div>
+                                </div>
+
+                                <!-- Grant types & scopes -->
+                                <div class="d-flex flex-wrap gap-1 mb-3">
+                                    @foreach (var g in c.AllowedGrantTypes)
+                                    { <span class="badge bg-primary bg-opacity-10 text-primary" style="font-size:10px;">@g.GrantType</span> }
+                                    @foreach (var s in c.AllowedScopes)
+                                    { <span class="badge bg-info bg-opacity-10 text-info" style="font-size:10px;">@s.Scope</span> }
+                                </div>
+
+                                <div class="d-flex gap-2">
+                                    <a href="/clients/@c.Id" class="btn btn-sm btn-outline-primary flex-grow-1">Manage</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private int _orgId;
+    private Dictionary<string, List<OAuthClient>> _clientsByProject = new();
+    private List<OAuthClient> _clients = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Email == auth.User.Identity!.Name);
+        if (user?.OrganizationId == null) return;
+        _orgId = user.OrganizationId.Value;
+
+        _clients = await Db.OAuthClients
+            .Include(c => c.AllowedGrantTypes)
+            .Include(c => c.AllowedScopes)
+            .Include(c => c.Project)
+            .Where(c => c.OrganizationId == _orgId)
+            .OrderBy(c => c.Project.Name).ThenBy(c => c.Name)
+            .ToListAsync();
+
+        _clientsByProject = _clients
+            .GroupBy(c => c.Project.Name)
+            .ToDictionary(g => g.Key, g => g.ToList());
+    }
+}

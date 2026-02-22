@@ -1,0 +1,207 @@
+@page "/users"
+@inject ApplicationDbContext Db
+@inject IOrganizationService OrgSvc
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
+@using OAuthProviderV2.Services
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "OrgAdmin")]
+
+<PageTitle>Users — OAuth Provider</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">Users</h4>
+        <p class="text-muted mb-0">Manage organization members</p>
+    </div>
+    <button class="btn btn-primary" @onclick="() => _showInvite = true">+ Invite User</button>
+</div>
+
+<!-- Invite modal -->
+@if (_showInvite)
+{
+    <div class="card border-0 shadow-sm mb-4 border-start border-primary border-3">
+        <div class="card-body">
+            <h6 class="fw-semibold mb-3">Invite New User</h6>
+            @if (!string.IsNullOrEmpty(_inviteError))
+            { <div class="alert alert-danger small py-2">@_inviteError</div> }
+            @if (!string.IsNullOrEmpty(_inviteSuccess))
+            { <div class="alert alert-success small py-2">@_inviteSuccess</div> }
+
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label small fw-medium">First Name</label>
+                    <input class="form-control" @bind="_inviteFirst" placeholder="Jane"/>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-medium">Last Name</label>
+                    <input class="form-control" @bind="_inviteLast" placeholder="Smith"/>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-medium">Email</label>
+                    <input type="email" class="form-control" @bind="_inviteEmail" placeholder="jane@company.com"/>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-medium">Role</label>
+                    <select class="form-select" @bind="_inviteRole">
+                        <option value="member">Member</option>
+                        <option value="developer">Developer</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+                <button class="btn btn-primary" @onclick="InviteUserAsync" disabled="@_inviting">
+                    @if (_inviting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Send Invite
+                </button>
+                <button class="btn btn-outline-secondary" @onclick="() => { _showInvite = false; _inviteError = null; _inviteSuccess = null; }">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Users table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="px-4">User</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Email Verified</th>
+                        <th>Last Login</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (user, role) in _members)
+                    {
+                        <tr>
+                            <td class="px-4">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="user-avatar-sm">@(user.FirstName?.Substring(0,1) ?? user.Email?.Substring(0,1) ?? "?")</div>
+                                    <div>
+                                        <div class="fw-medium small">@user.FullName</div>
+                                        <div class="text-muted" style="font-size:11px;">@user.Email</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td><span class="badge bg-primary bg-opacity-10 text-primary">@role</span></td>
+                            <td>
+                                @if (user.IsActive)
+                                { <span class="badge bg-success">Active</span> }
+                                else
+                                { <span class="badge bg-secondary">Inactive</span> }
+                            </td>
+                            <td>
+                                @if (user.IsEmailVerified)
+                                { <span class="badge bg-success">✓ Verified</span> }
+                                else
+                                { <span class="badge bg-warning text-dark">⏳ Pending</span> }
+                            </td>
+                            <td class="small text-muted">@(user.LastLoginAt?.ToString("MMM d, yyyy") ?? "Never")</td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    <button class="btn btn-sm btn-outline-secondary"
+                                            @onclick="() => ToggleActiveAsync(user.Id)">
+                                        @(user.IsActive ? "Deactivate" : "Activate")
+                                    </button>
+                                    @if (!user.IsEmailVerified)
+                                    {
+                                        <button class="btn btn-sm btn-outline-info"
+                                                @onclick="() => ShowVerifyLinkAsync(user.Id)">
+                                            📋 Get Link
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Manual verify link modal -->
+@if (_verifyLink != null)
+{
+    <div class="modal-backdrop-custom" @onclick="() => _verifyLink = null"></div>
+    <div class="modal-dialog-custom card border-0 shadow-xl">
+        <div class="card-body p-4">
+            <h6 class="fw-bold mb-2">📋 Manual Verification Link</h6>
+            <p class="small text-muted mb-3">Share this link with the user to verify their email:</p>
+            <div class="input-group">
+                <input type="text" class="form-control form-control-sm font-monospace small" readonly value="@_verifyLink"/>
+                <button class="btn btn-outline-primary btn-sm" @onclick="CopyLink">Copy</button>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary mt-3 w-100" @onclick="() => _verifyLink = null">Close</button>
+        </div>
+    </div>
+}
+
+@code {
+    private int _orgId;
+    private List<(ApplicationUser user, string role)> _members = new();
+    private bool _showInvite;
+    private bool _inviting;
+    private string _inviteEmail = "", _inviteFirst = "", _inviteLast = "", _inviteRole = "member";
+    private string? _inviteError, _inviteSuccess, _verifyLink;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Email == auth.User.Identity!.Name);
+        if (user?.OrganizationId == null) return;
+        _orgId = user.OrganizationId.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var rows = await Db.OrganizationUsers
+            .Where(ou => ou.OrganizationId == _orgId)
+            .Include(ou => ou.User)
+            .Select(ou => new { ou.User, ou.Role })
+            .ToListAsync();
+        _members = rows.Select(x => (x.User, x.Role)).ToList();
+    }
+
+    private async Task InviteUserAsync()
+    {
+        _inviting = true;
+        _inviteError = null;
+        _inviteSuccess = null;
+
+        var baseUrl = Nav.BaseUri.TrimEnd('/');
+        var (ok, error) = await OrgSvc.InviteUserAsync(_orgId, _inviteEmail, _inviteFirst, _inviteLast, _inviteRole, baseUrl);
+
+        if (ok)
+        {
+            _inviteSuccess = $"Invitation sent to {_inviteEmail}. They will receive a verification email.";
+            _inviteEmail = _inviteFirst = _inviteLast = "";
+            await LoadAsync();
+        }
+        else
+        {
+            _inviteError = error ?? "Failed to invite user.";
+        }
+        _inviting = false;
+    }
+
+    private async Task ToggleActiveAsync(string userId)
+    {
+        await OrgSvc.ToggleUserActiveAsync(_orgId, userId);
+        await LoadAsync();
+    }
+
+    private async Task ShowVerifyLinkAsync(string userId)
+    {
+        var baseUrl = Nav.BaseUri.TrimEnd('/');
+        _verifyLink = await OrgSvc.GetManualVerifyLinkAsync(_orgId, userId, baseUrl);
+    }
+
+    private void CopyLink() { /* JS interop for clipboard — omitted per zero-JS constraint */ }
+}

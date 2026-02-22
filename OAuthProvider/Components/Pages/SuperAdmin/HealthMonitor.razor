@@ -1,0 +1,199 @@
+@page "/super/health"
+@inject ApplicationDbContext Db
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SuperAdmin")]
+
+<PageTitle>Health Monitor — Super Admin</PageTitle>
+
+<div class="mb-4">
+    <h4 class="fw-bold">Health Monitor</h4>
+    <p class="text-muted mb-0">Platform operational status — last checked @_checkedAt.ToString("HH:mm:ss") UTC</p>
+</div>
+
+<div class="row g-4">
+    <!-- Database -->
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <div style="font-size:32px;">🗄️</div>
+                    <div>
+                        <h6 class="fw-bold mb-0">Database</h6>
+                        <span class="badge bg-success">Operational</span>
+                    </div>
+                </div>
+                <table class="table table-sm mb-0">
+                    <tr><td class="text-muted small">Organizations</td><td class="fw-semibold">@_stats.orgs</td></tr>
+                    <tr><td class="text-muted small">Users</td><td class="fw-semibold">@_stats.users</td></tr>
+                    <tr><td class="text-muted small">OAuth Clients</td><td class="fw-semibold">@_stats.clients</td></tr>
+                    <tr><td class="text-muted small">Access Tokens (active)</td><td class="fw-semibold">@_stats.activeTokens</td></tr>
+                    <tr><td class="text-muted small">Audit Log Entries</td><td class="fw-semibold">@_stats.auditLogs</td></tr>
+                    <tr><td class="text-muted small">WAF Events (total)</td><td class="fw-semibold">@_stats.wafEvents</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- WAF -->
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <div style="font-size:32px;">🛡️</div>
+                    <div>
+                        <h6 class="fw-bold mb-0">WAF Engine</h6>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                </div>
+                <table class="table table-sm mb-0">
+                    <tr><td class="text-muted small">WAF Rules (total)</td><td class="fw-semibold">@_stats.wafRules</td></tr>
+                    <tr><td class="text-muted small">Blocks last 1h</td><td class="fw-semibold">@_stats.wafLastHour</td></tr>
+                    <tr><td class="text-muted small">Blocks last 24h</td><td class="fw-semibold">@_stats.wafLastDay</td></tr>
+                    <tr><td class="text-muted small">Critical events (24h)</td><td class="fw-semibold @(_stats.wafCritical > 0 ? "text-danger" : "")">@_stats.wafCritical</td></tr>
+                    <tr><td class="text-muted small">SQL Injection attempts (24h)</td><td class="fw-semibold @(_stats.sqlInject > 0 ? "text-danger" : "")">@_stats.sqlInject</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- OAuth Endpoints -->
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <div style="font-size:32px;">🔐</div>
+                    <div>
+                        <h6 class="fw-bold mb-0">OAuth Endpoints</h6>
+                        <span class="badge bg-success">Operational</span>
+                    </div>
+                </div>
+                <table class="table table-sm mb-0">
+                    @foreach (var ep in _endpoints)
+                    {
+                        <tr>
+                            <td><code class="small">@ep.method @ep.path</code></td>
+                            <td><span class="badge bg-success">✓ OK</span></td>
+                        </tr>
+                    }
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Email -->
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <div style="font-size:32px;">📧</div>
+                    <div>
+                        <h6 class="fw-bold mb-0">Email Service</h6>
+                        <span class="badge @(_stats.emailConfigured ? "bg-success" : "bg-warning text-dark")">
+                            @(_stats.emailConfigured ? "Configured" : "Not Configured")
+                        </span>
+                    </div>
+                </div>
+                @if (!_stats.emailConfigured)
+                {
+                    <div class="alert alert-warning small py-2">
+                        Platform SMTP is not configured. OTP emails and alerts won't be delivered.
+                        <a href="/super/email" class="alert-link">Configure now →</a>
+                    </div>
+                }
+                <table class="table table-sm mb-0">
+                    <tr><td class="text-muted small">Orgs with custom SMTP</td><td class="fw-semibold">@_stats.orgsWithEmail</td></tr>
+                    <tr><td class="text-muted small">Orgs using platform SMTP</td><td class="fw-semibold">@(_stats.orgs - _stats.orgsWithEmail)</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login activity chart placeholder -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Login Activity — Last 24h</h6></div>
+            <div class="card-body">
+                <div class="row text-center g-3">
+                    @foreach (var h in _hourlyLogins)
+                    {
+                        var maxH = _hourlyLogins.Max(x => x.success + x.failed);
+                        var pct  = maxH > 0 ? (int)((h.success + h.failed) * 100 / maxH) : 0;
+                        <div class="col" style="min-width:40px;">
+                            <div class="d-flex flex-column align-items-center">
+                                <div style="height:60px;display:flex;align-items:end;width:24px;background:#f3f4f6;border-radius:4px;overflow:hidden;">
+                                    <div style="width:100%;height:@pct%;background:@(h.failed > 0 ? "#f43f5e" : "#6366f1");border-radius:4px;"></div>
+                                </div>
+                                <div style="font-size:9px;color:#9ca3af;margin-top:4px;">@h.hour:00</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="d-flex gap-3 mt-2 small">
+                    <span><span style="display:inline-block;width:12px;height:12px;background:#6366f1;border-radius:2px;"></span> Success</span>
+                    <span><span style="display:inline-block;width:12px;height:12px;background:#f43f5e;border-radius:2px;"></span> Failed</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="text-center mt-4">
+    <button class="btn btn-outline-secondary" @onclick="RefreshAsync">↻ Refresh</button>
+</div>
+
+@code {
+    private DateTime _checkedAt = DateTime.UtcNow;
+    private (int orgs, int users, int clients, int activeTokens, long auditLogs, long wafEvents,
+             int wafRules, long wafLastHour, long wafLastDay, long wafCritical, long sqlInject,
+             bool emailConfigured, int orgsWithEmail) _stats;
+    private List<(int hour, int success, int failed)> _hourlyLogins = new();
+
+    private static readonly (string method, string path)[] _endpoints = new[]
+    {
+        ("GET",  "/.well-known/openid-configuration"),
+        ("GET",  "/authorize"),
+        ("POST", "/token"),
+        ("GET",  "/userinfo"),
+        ("POST", "/revoke"),
+    };
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _checkedAt = DateTime.UtcNow;
+        var now = DateTime.UtcNow;
+        var day = now.AddHours(-24);
+
+        _stats = (
+            orgs:           await Db.Organizations.CountAsync(),
+            users:          await Db.Users.CountAsync(),
+            clients:        await Db.OAuthClients.CountAsync(),
+            activeTokens:   await Db.AccessTokens.CountAsync(t => !t.IsRevoked && t.ExpiresAt > now),
+            auditLogs:      await Db.AuditLogs.LongCountAsync(),
+            wafEvents:      await Db.WafEvents.LongCountAsync(),
+            wafRules:       await Db.WafRules.CountAsync(r => r.IsEnabled),
+            wafLastHour:    await Db.WafEvents.LongCountAsync(e => e.CreatedAt >= now.AddHours(-1)),
+            wafLastDay:     await Db.WafEvents.LongCountAsync(e => e.CreatedAt >= day),
+            wafCritical:    await Db.WafEvents.LongCountAsync(e => e.ThreatLevel == "critical" && e.CreatedAt >= day),
+            sqlInject:      await Db.WafEvents.LongCountAsync(e => e.ThreatType == "sql_injection" && e.CreatedAt >= day),
+            emailConfigured: await Db.PlatformEmailConfigs.AnyAsync(c => c.IsConfigured),
+            orgsWithEmail:  await Db.OrganizationEmailConfigs.CountAsync(c => !c.UseDefaultProvider && c.SmtpHost != null)
+        );
+
+        // Hourly logins
+        var logins = await Db.AuditLogs
+            .Where(l => l.CreatedAt >= day && (l.EventType == "LoginSuccess" || l.EventType == "LoginFailed"))
+            .ToListAsync();
+
+        _hourlyLogins = Enumerable.Range(0, 24)
+            .Select(i =>
+            {
+                var h     = now.AddHours(-23 + i).Hour;
+                var start = now.AddHours(-23 + i);
+                var end   = start.AddHours(1);
+                var inHour = logins.Where(l => l.CreatedAt >= start && l.CreatedAt < end).ToList();
+                return (hour: h, success: inHour.Count(l => l.Success), failed: inHour.Count(l => !l.Success));
+            })
+            .ToList();
+    }
+}

@@ -1,0 +1,124 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+
+<div class="d-flex" style="min-height:100vh;">
+    <!-- Sidebar -->
+    <div class="sidebar d-flex flex-column" style="width:240px;flex-shrink:0;">
+        <div class="sidebar-brand px-4 py-3 d-flex align-items-center gap-2">
+            <span style="font-size:22px;">🔐</span>
+            <div>
+                <div class="fw-bold text-white" style="font-size:15px;">OAuth Provider</div>
+                <div style="font-size:10px;opacity:.6;color:white;">Admin Portal</div>
+            </div>
+        </div>
+
+        <div class="px-3 py-2 flex-grow-1">
+            <AuthorizeView Roles="SuperAdmin">
+                <Authorized>
+                    <div class="sidebar-section-label">SUPER ADMIN</div>
+                    <NavLink class="sidebar-link" href="/super" Match="NavLinkMatch.All">
+                        <span>📊</span> Platform Overview
+                    </NavLink>
+                    <NavLink class="sidebar-link" href="/super/organizations">
+                        <span>🏢</span> Organizations
+                    </NavLink>
+                    <NavLink class="sidebar-link" href="/super/waf">
+                        <span>🛡️</span> WAF Monitor
+                    </NavLink>
+                    <NavLink class="sidebar-link" href="/super/audits">
+                        <span>📋</span> All Audit Logs
+                    </NavLink>
+                    <NavLink class="sidebar-link" href="/super/email">
+                        <span>📧</span> Email Config
+                    </NavLink>
+                    <NavLink class="sidebar-link" href="/super/health">
+                        <span>💚</span> Health Monitor
+                    </NavLink>
+                </Authorized>
+            </AuthorizeView>
+
+            <AuthorizeView Roles="OrgAdmin,OrgUser">
+                <Authorized>
+                    <div class="sidebar-section-label">ORGANIZATION</div>
+                    <NavLink class="sidebar-link" href="/" Match="NavLinkMatch.All">
+                        <span>📊</span> Dashboard
+                    </NavLink>
+                    <NavLink class="sidebar-link" href="/projects">
+                        <span>📁</span> Projects
+                    </NavLink>
+                    <NavLink class="sidebar-link" href="/clients">
+                        <span>🔑</span> OAuth Clients
+                    </NavLink>
+                    <NavLink class="sidebar-link" href="/tokens">
+                        <span>🪙</span> Tokens
+                    </NavLink>
+                </Authorized>
+            </AuthorizeView>
+
+            <AuthorizeView Roles="OrgAdmin">
+                <Authorized>
+                    <div class="sidebar-section-label mt-2">ADMIN</div>
+                    <NavLink class="sidebar-link" href="/users">
+                        <span>👥</span> Users
+                    </NavLink>
+                    <NavLink class="sidebar-link" href="/audit">
+                        <span>📋</span> Audit Logs
+                    </NavLink>
+                    <NavLink class="sidebar-link" href="/settings/email">
+                        <span>📧</span> Email Settings
+                    </NavLink>
+                    <NavLink class="sidebar-link" href="/settings/waf">
+                        <span>🛡️</span> WAF Rules
+                    </NavLink>
+                </Authorized>
+            </AuthorizeView>
+
+            <div class="sidebar-section-label mt-2">DEVELOPER</div>
+            <NavLink class="sidebar-link" href="/docs">
+                <span>📖</span> API Docs
+            </NavLink>
+        </div>
+
+        <!-- User info at bottom -->
+        <div class="p-3 border-top border-white border-opacity-10">
+            <AuthorizeView>
+                <Authorized>
+                    <div class="d-flex align-items-center gap-2">
+                        <a href="/Account/Accounts" title="Manage accounts"
+                           style="text-decoration:none;flex-shrink:0;">
+                            <div class="user-avatar" style="cursor:pointer;"
+                                 title="@context.User.Identity?.Name">
+                                @(context.User.Identity?.Name?.Substring(0,1).ToUpper() ?? "?")
+                            </div>
+                        </a>
+                        <div style="min-width:0;flex-grow:1;">
+                            <div class="text-white fw-medium text-truncate" style="font-size:12px;">
+                                @context.User.Identity?.Name
+                            </div>
+                            <div style="font-size:10px;opacity:.6;color:white;">
+                                @(context.User.IsInRole("SuperAdmin") ? "Super Admin" :
+                                  context.User.IsInRole("OrgAdmin")   ? "Org Admin"  : "Member")
+                            </div>
+                        </div>
+                        <div class="d-flex flex-column gap-0 ms-auto">
+                            <a href="/Account/Accounts" class="btn btn-sm p-1"
+                               style="color:rgba(255,255,255,.5);font-size:14px;" title="Switch account">⇄</a>
+                            <a href="/Account/Logout" class="btn btn-sm p-1"
+                               style="color:rgba(255,255,255,.5);" title="Sign out">⏻</a>
+                        </div>
+                    </div>
+                </Authorized>
+            </AuthorizeView>
+        </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="flex-grow-1 d-flex flex-column" style="min-width:0;background:#f8f9fa;">
+        <main class="p-4 flex-grow-1">
+            <ErrorBoundary>
+                @Body
+            </ErrorBoundary>
+        </main>
+    </div>
+</div>

@@ -1,0 +1,268 @@
+@page "/clients/create"
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "OrgAdmin")]
+@using System.Security.Cryptography
+@using BCrypt.Net
+
+<PageTitle>Create OAuth Client</PageTitle>
+
+<div class="mb-4">
+    <h4 class="fw-bold">Create OAuth Client</h4>
+    <p class="text-muted mb-0">Configure a new application to use your OAuth Provider</p>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{ <div class="alert alert-danger">@_error</div> }
+
+@if (_createdSecret != null)
+{
+    <!-- Secret reveal panel — shown ONCE -->
+    <div class="alert alert-success border-0 shadow-sm mb-4">
+        <h5 class="fw-bold mb-2">✅ Client Created Successfully!</h5>
+        <p class="mb-2">Your client secret is shown <strong>only once</strong>. Copy it now — it cannot be retrieved later.</p>
+        <div class="mb-2">
+            <label class="form-label small fw-semibold">Client ID</label>
+            <div class="input-group">
+                <input type="text" class="form-control font-monospace" readonly value="@_createdClientId"/>
+            </div>
+        </div>
+        <div>
+            <label class="form-label small fw-semibold">Client Secret</label>
+            <div class="input-group">
+                <input type="@(_secretVisible ? "text" : "password")" class="form-control font-monospace"
+                       readonly value="@_createdSecret"/>
+                <button class="btn btn-outline-secondary" type="button"
+                        @onclick="() => _secretVisible = !_secretVisible">
+                    @(_secretVisible ? "🙈 Hide" : "👁 Show")
+                </button>
+            </div>
+            <div class="form-text text-danger fw-semibold mt-1">⚠ This secret will never be shown again. Store it securely now.</div>
+        </div>
+        <a href="/clients" class="btn btn-primary mt-3">← Back to Clients</a>
+    </div>
+    return;
+}
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <!-- Project -->
+        <h6 class="fw-semibold text-muted mb-3">PROJECT</h6>
+        <div class="mb-4">
+            <label class="form-label">Project <span class="text-danger">*</span></label>
+            <select class="form-select" @bind="_projectId">
+                <option value="0">— Select a project —</option>
+                @foreach (var p in _projects)
+                {
+                    <option value="@p.Id">@p.Name</option>
+                }
+            </select>
+        </div>
+
+        <!-- Basic info -->
+        <h6 class="fw-semibold text-muted mb-3">CLIENT DETAILS</h6>
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <label class="form-label">Client Name <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="_name" placeholder="My Web App"/>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Client Type</label>
+                <select class="form-select" @bind="_clientType">
+                    <option value="confidential">Confidential (server-side app, secret is safe)</option>
+                    <option value="public">Public (SPA / mobile, no secret)</option>
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Description</label>
+                <textarea class="form-control" rows="2" @bind="_description"></textarea>
+            </div>
+        </div>
+
+        <!-- Redirect URIs -->
+        <h6 class="fw-semibold text-muted mb-2">REDIRECT URIs <span class="text-danger">*</span></h6>
+        <p class="small text-muted mb-2">Exact URIs that the provider may redirect to after authorization. One per line.</p>
+        <div class="mb-4">
+            <textarea class="form-control font-monospace" rows="4" @bind="_redirectUris"
+                      placeholder="https://app.example.com/callback&#10;https://app.example.com/silent-renew"></textarea>
+        </div>
+
+        <!-- CORS Origins -->
+        <h6 class="fw-semibold text-muted mb-2">ALLOWED CORS ORIGINS</h6>
+        <p class="small text-muted mb-2">Origins permitted to make cross-origin requests to the token endpoint (for public SPAs). One per line.</p>
+        <div class="mb-4">
+            <textarea class="form-control font-monospace" rows="3" @bind="_corsOrigins"
+                      placeholder="https://app.example.com&#10;https://staging.example.com"></textarea>
+        </div>
+
+        <!-- Post-logout URIs -->
+        <h6 class="fw-semibold text-muted mb-2">POST-LOGOUT REDIRECT URIS</h6>
+        <p class="small text-muted mb-2">Where to redirect after the user signs out. One per line.</p>
+        <div class="mb-4">
+            <textarea class="form-control font-monospace" rows="2" @bind="_postLogoutUris"
+                      placeholder="https://app.example.com/signed-out"></textarea>
+        </div>
+
+        <!-- Scopes -->
+        <h6 class="fw-semibold text-muted mb-3">ALLOWED SCOPES</h6>
+        <div class="d-flex gap-3 flex-wrap mb-4">
+            @foreach (var s in _allScopes)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="scope_@s.Name"
+                           checked="@_selectedScopes.Contains(s.Name)"
+                           @onchange="e => ToggleScope(s.Name, (bool)(e.Value ?? false))"/>
+                    <label class="form-check-label" for="scope_@s.Name">
+                        <span class="fw-medium">@s.Name</span>
+                        @if (s.Description != null)
+                        { <span class="text-muted small"> — @s.Description</span> }
+                    </label>
+                </div>
+            }
+        </div>
+
+        <!-- Grant Types -->
+        <h6 class="fw-semibold text-muted mb-3">GRANT TYPES</h6>
+        <div class="d-flex gap-3 flex-wrap mb-4">
+            @foreach (var g in _allGrants)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="grant_@g"
+                           checked="@_selectedGrants.Contains(g)"
+                           @onchange="e => ToggleGrant(g, (bool)(e.Value ?? false))"/>
+                    <label class="form-check-label" for="grant_@g">@g</label>
+                </div>
+            }
+        </div>
+
+        <!-- Token lifetimes -->
+        <h6 class="fw-semibold text-muted mb-3">TOKEN LIFETIMES</h6>
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <label class="form-label small">Access Token (seconds)</label>
+                <input type="number" class="form-control" @bind="_accessTokenLifetime" min="60" max="86400"/>
+                <div class="form-text">Default: 3600 (1 hour)</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small">Refresh Token (days)</label>
+                <input type="number" class="form-control" @bind="_refreshTokenLifetime" min="1" max="365"/>
+                <div class="form-text">Default: 30 days</div>
+            </div>
+        </div>
+
+        <button class="btn btn-primary btn-lg" @onclick="CreateAsync" disabled="@_creating">
+            @if (_creating) { <span class="spinner-border spinner-border-sm me-2"></span> }
+            Create Client
+        </button>
+    </div>
+</div>
+
+@code {
+    private int _orgId;
+    private int _projectId;
+    private string _name = "", _description = "", _redirectUris = "", _corsOrigins = "", _postLogoutUris = "";
+    private string _clientType = "confidential";
+    private int _accessTokenLifetime = 3600, _refreshTokenLifetime = 30;
+    private HashSet<string> _selectedScopes = new() { "openid", "profile", "email" };
+    private HashSet<string> _selectedGrants = new() { "authorization_code", "refresh_token" };
+    private List<OAuthScope> _allScopes = new();
+    private List<Project> _projects = new();
+    private bool _creating;
+    private bool _secretVisible;
+    private string? _error, _createdSecret, _createdClientId;
+
+    private static readonly string[] _allGrants = { "authorization_code", "client_credentials", "refresh_token" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Email == auth.User.Identity!.Name);
+        if (user?.OrganizationId == null) return;
+        _orgId = user.OrganizationId.Value;
+
+        _allScopes = await Db.OAuthScopes.ToListAsync();
+        _projects  = await Db.Projects.Where(p => p.OrganizationId == _orgId && p.IsActive).ToListAsync();
+    }
+
+    private void ToggleScope(string s, bool on) { if (on) _selectedScopes.Add(s); else _selectedScopes.Remove(s); }
+    private void ToggleGrant(string g, bool on) { if (on) _selectedGrants.Add(g); else _selectedGrants.Remove(g); }
+
+    private async Task CreateAsync()
+    {
+        _error = null;
+        if (_projectId == 0) { _error = "Select a project."; return; }
+        if (string.IsNullOrWhiteSpace(_name)) { _error = "Client name is required."; return; }
+        if (string.IsNullOrWhiteSpace(_redirectUris)) { _error = "At least one redirect URI is required."; return; }
+
+        // Parse URIs — validate they are valid HTTPS URIs (allow http for localhost dev)
+        var redirectList = _redirectUris.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(u => u.Trim()).Where(u => !string.IsNullOrEmpty(u)).ToList();
+        foreach (var uri in redirectList)
+        {
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out _))
+            { _error = $"Invalid redirect URI: {uri}"; return; }
+        }
+
+        var corsOriginList = string.IsNullOrWhiteSpace(_corsOrigins) ? new List<string>() :
+            _corsOrigins.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(u => u.Trim()).Where(u => !string.IsNullOrEmpty(u)).ToList();
+
+        var postLogoutList = string.IsNullOrWhiteSpace(_postLogoutUris) ? new List<string>() :
+            _postLogoutUris.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(u => u.Trim()).Where(u => !string.IsNullOrEmpty(u)).ToList();
+
+        _creating = true;
+        try
+        {
+            // Generate credentials
+            var rawSecret = GenerateSecret();
+            var clientId  = $"client-{Guid.NewGuid():N}";
+
+            var client = new OAuthClient
+            {
+                ProjectId              = _projectId,
+                OrganizationId         = _orgId,
+                ClientId               = clientId,
+                ClientSecretHash       = BCrypt.HashPassword(rawSecret),
+                Name                   = _name,
+                Description            = _description,
+                ClientType             = _clientType,
+                AccessTokenLifetimeSeconds = _accessTokenLifetime,
+                RefreshTokenLifetimeDays   = _refreshTokenLifetime,
+            };
+
+            Db.OAuthClients.Add(client);
+            await Db.SaveChangesAsync();
+
+            // Related entities
+            foreach (var uri in redirectList)
+                Db.OAuthClientRedirectUris.Add(new OAuthClientRedirectUri { OAuthClientId = client.Id, Uri = uri });
+            foreach (var origin in corsOriginList)
+                Db.OAuthClientCorsOrigins.Add(new OAuthClientCorsOrigin { OAuthClientId = client.Id, Origin = origin });
+            foreach (var uri in postLogoutList)
+                Db.OAuthClientPostLogoutUris.Add(new OAuthClientPostLogoutUri { OAuthClientId = client.Id, Uri = uri });
+            foreach (var scope in _selectedScopes)
+                Db.OAuthClientScopes.Add(new OAuthClientScope { OAuthClientId = client.Id, Scope = scope });
+            foreach (var grant in _selectedGrants)
+                Db.OAuthClientGrantTypes.Add(new OAuthClientGrantType { OAuthClientId = client.Id, GrantType = grant });
+
+            await Db.SaveChangesAsync();
+
+            _createdSecret   = rawSecret;
+            _createdClientId = clientId;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to create client: {ex.Message}";
+        }
+        _creating = false;
+    }
+
+    private static string GenerateSecret()
+    {
+        var bytes = new byte[48];
+        RandomNumberGenerator.Fill(bytes);
+        return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
+    }
+}

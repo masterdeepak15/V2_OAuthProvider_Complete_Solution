@@ -1,0 +1,327 @@
+@page "/clients/{Id:int}"
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+@using System.Security.Cryptography
+@using BCrypt.Net
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "OrgAdmin")]
+
+<PageTitle>Client Detail — OAuth Provider</PageTitle>
+
+@if (_client == null)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    return;
+}
+
+<div class="d-flex align-items-center gap-3 mb-4">
+    <a href="/clients" class="btn btn-sm btn-outline-secondary">← Clients</a>
+    <div>
+        <h4 class="fw-bold mb-0">@_client.Name</h4>
+        <p class="text-muted mb-0 small">@_client.ClientId</p>
+    </div>
+    <span class="badge @(_client.IsEnabled ? "bg-success" : "bg-secondary") ms-auto">
+        @(_client.IsEnabled ? "Active" : "Disabled")
+    </span>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{ <div class="alert alert-@(_isError ? "danger" : "success") small mb-4">@_message</div> }
+
+<div class="row g-4">
+    <!-- Left column -->
+    <div class="col-lg-8">
+
+        <!-- Credentials -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Credentials</h6></div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-muted">CLIENT ID</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control font-monospace" readonly value="@_client.ClientId"/>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-muted">CLIENT SECRET</label>
+                    <div class="input-group">
+                        <input type="@(_showSecret ? "text" : "password")" class="form-control font-monospace"
+                               readonly value="@(_newSecret ?? "••••••••••••••••••••••••••••••••")"/>
+                        <button class="btn btn-outline-secondary" @onclick="() => _showSecret = !_showSecret">
+                            @(_showSecret ? "🙈 Hide" : "👁 View")
+                        </button>
+                    </div>
+                    @if (_newSecret != null)
+                    {
+                        <div class="form-text text-danger fw-semibold">⚠ New secret shown once — copy it now!</div>
+                    }
+                    else
+                    {
+                        <div class="form-text">The secret is hashed and cannot be retrieved. Use Regenerate to create a new one.</div>
+                    }
+                </div>
+                <AuthorizeView Roles="OrgAdmin">
+                    <button class="btn btn-sm btn-outline-warning" @onclick="RegenerateSecretAsync">
+                        🔄 Regenerate Secret
+                    </button>
+                </AuthorizeView>
+            </div>
+        </div>
+
+        <!-- Redirect URIs -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Redirect URIs</h6></div>
+            <div class="card-body">
+                <textarea class="form-control font-monospace mb-2" rows="4"
+                          @bind="_redirectUris"
+                          placeholder="https://app.example.com/callback"></textarea>
+                <div class="form-text">One URI per line. Must match exactly (no wildcards).</div>
+            </div>
+        </div>
+
+        <!-- CORS Origins -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-semibold">Allowed CORS Origins</h6>
+            </div>
+            <div class="card-body">
+                <textarea class="form-control font-monospace mb-2" rows="3" @bind="_corsOrigins"
+                          placeholder="https://app.example.com"></textarea>
+                <div class="form-text">Origins allowed to call the token endpoint cross-origin (for SPAs). One per line.</div>
+            </div>
+        </div>
+
+        <!-- Post-Logout URIs -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Post-Logout Redirect URIs</h6></div>
+            <div class="card-body">
+                <textarea class="form-control font-monospace mb-2" rows="2" @bind="_postLogoutUris"
+                          placeholder="https://app.example.com/signed-out"></textarea>
+            </div>
+        </div>
+
+        <!-- Scopes & Grant Types -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Scopes & Grant Types</h6></div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-muted">ALLOWED SCOPES</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        @foreach (var s in _allScopes)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="s_@s"
+                                       checked="@_selectedScopes.Contains(s)"
+                                       @onchange="e => Toggle(_selectedScopes, s, (bool)(e.Value ?? false))"/>
+                                <label class="form-check-label small" for="s_@s">@s</label>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label small fw-semibold text-muted">GRANT TYPES</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        @foreach (var g in _allGrants)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="g_@g"
+                                       checked="@_selectedGrants.Contains(g)"
+                                       @onchange="e => Toggle(_selectedGrants, g, (bool)(e.Value ?? false))"/>
+                                <label class="form-check-label small" for="g_@g">@g</label>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Token Lifetimes -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold">Token Lifetimes</h6></div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-medium">Access Token (seconds)</label>
+                        <input type="number" class="form-control" @bind="_accessTokenLife" min="60" max="86400"/>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-medium">Refresh Token (days)</label>
+                        <input type="number" class="form-control" @bind="_refreshTokenLife" min="1" max="365"/>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Save -->
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save Changes
+            </button>
+            <button class="btn btn-outline-@(_client.IsEnabled ? "secondary" : "success")"
+                    @onclick="ToggleEnabledAsync">
+                @(_client.IsEnabled ? "Disable Client" : "Enable Client")
+            </button>
+        </div>
+    </div>
+
+    <!-- Right column — Active Tokens -->
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-semibold">Active Tokens</h6>
+                <span class="badge bg-primary">@_activeTokens.Count</span>
+            </div>
+            <div class="card-body p-0">
+                @if (!_activeTokens.Any())
+                {
+                    <div class="text-center py-4 text-muted small">No active tokens</div>
+                }
+                else
+                {
+                    @foreach (var t in _activeTokens)
+                    {
+                        <div class="border-bottom p-3">
+                            <div class="small fw-medium">@(t.User?.Email ?? "Service Account")</div>
+                            <div class="text-muted" style="font-size:11px;">Expires: @t.ExpiresAt.ToString("MMM d HH:mm")</div>
+                            <div class="text-muted" style="font-size:11px;">Scopes: @t.Scopes</div>
+                            <button class="btn btn-xs btn-outline-danger mt-1"
+                                    @onclick="() => RevokeTokenAsync(t.Id)">Revoke</button>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private OAuthClient? _client;
+    private int _orgId;
+    private bool _showSecret, _saving, _isError;
+    private string? _message, _newSecret;
+    private string _redirectUris = "", _corsOrigins = "", _postLogoutUris = "";
+    private int _accessTokenLife, _refreshTokenLife;
+    private HashSet<string> _selectedScopes = new(), _selectedGrants = new();
+    private List<string> _allScopes = new() { "openid","profile","email","api","offline_access" };
+    private static readonly string[] _allGrants = { "authorization_code","client_credentials","refresh_token" };
+    private List<OAuthProviderV2.Models.AccessToken> _activeTokens = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Email == auth.User.Identity!.Name);
+        if (user?.OrganizationId == null) return;
+        _orgId = user.OrganizationId.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _client = await Db.OAuthClients
+            .Include(c => c.RedirectUris)
+            .Include(c => c.CorsOrigins)
+            .Include(c => c.PostLogoutRedirectUris)
+            .Include(c => c.AllowedScopes)
+            .Include(c => c.AllowedGrantTypes)
+            .FirstOrDefaultAsync(c => c.Id == Id && c.OrganizationId == _orgId);
+
+        if (_client == null) return;
+
+        _redirectUris    = string.Join("\n", _client.RedirectUris.Select(r => r.Uri));
+        _corsOrigins     = string.Join("\n", _client.CorsOrigins.Select(r => r.Origin));
+        _postLogoutUris  = string.Join("\n", _client.PostLogoutRedirectUris.Select(r => r.Uri));
+        _selectedScopes  = _client.AllowedScopes.Select(s => s.Scope).ToHashSet();
+        _selectedGrants  = _client.AllowedGrantTypes.Select(g => g.GrantType).ToHashSet();
+        _accessTokenLife = _client.AccessTokenLifetimeSeconds;
+        _refreshTokenLife = _client.RefreshTokenLifetimeDays;
+
+        _activeTokens = await Db.AccessTokens
+            .Include(t => t.User)
+            .Where(t => t.OAuthClientId == Id && !t.IsRevoked && t.ExpiresAt > DateTime.UtcNow)
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private void Toggle(HashSet<string> set, string val, bool on) { if (on) set.Add(val); else set.Remove(val); }
+
+    private async Task SaveAsync()
+    {
+        if (_client == null) return;
+        _saving = true;
+
+        try
+        {
+            _client.AccessTokenLifetimeSeconds = _accessTokenLife;
+            _client.RefreshTokenLifetimeDays   = _refreshTokenLife;
+            _client.UpdatedAt = DateTime.UtcNow;
+
+            // Replace redirect URIs
+            var oldRedirects = await Db.OAuthClientRedirectUris.Where(r => r.OAuthClientId == _client.Id).ToListAsync();
+            Db.OAuthClientRedirectUris.RemoveRange(oldRedirects);
+            foreach (var uri in _redirectUris.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(u => u.Trim()).Where(u => u.Length > 0))
+                Db.OAuthClientRedirectUris.Add(new OAuthClientRedirectUri { OAuthClientId = _client.Id, Uri = uri });
+
+            // Replace CORS origins
+            var oldCors = await Db.OAuthClientCorsOrigins.Where(r => r.OAuthClientId == _client.Id).ToListAsync();
+            Db.OAuthClientCorsOrigins.RemoveRange(oldCors);
+            foreach (var origin in _corsOrigins.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(u => u.Trim()).Where(u => u.Length > 0))
+                Db.OAuthClientCorsOrigins.Add(new OAuthClientCorsOrigin { OAuthClientId = _client.Id, Origin = origin });
+
+            // Replace post-logout URIs
+            var oldPost = await Db.OAuthClientPostLogoutUris.Where(r => r.OAuthClientId == _client.Id).ToListAsync();
+            Db.OAuthClientPostLogoutUris.RemoveRange(oldPost);
+            foreach (var uri in _postLogoutUris.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(u => u.Trim()).Where(u => u.Length > 0))
+                Db.OAuthClientPostLogoutUris.Add(new OAuthClientPostLogoutUri { OAuthClientId = _client.Id, Uri = uri });
+
+            // Replace scopes & grants
+            var oldScopes = await Db.OAuthClientScopes.Where(s => s.OAuthClientId == _client.Id).ToListAsync();
+            Db.OAuthClientScopes.RemoveRange(oldScopes);
+            foreach (var s in _selectedScopes)
+                Db.OAuthClientScopes.Add(new OAuthClientScope { OAuthClientId = _client.Id, Scope = s });
+
+            var oldGrants = await Db.OAuthClientGrantTypes.Where(g => g.OAuthClientId == _client.Id).ToListAsync();
+            Db.OAuthClientGrantTypes.RemoveRange(oldGrants);
+            foreach (var g in _selectedGrants)
+                Db.OAuthClientGrantTypes.Add(new OAuthClientGrantType { OAuthClientId = _client.Id, GrantType = g });
+
+            await Db.SaveChangesAsync();
+            _message = "Client updated successfully."; _isError = false;
+        }
+        catch (Exception ex) { _message = ex.Message; _isError = true; }
+        _saving = false;
+    }
+
+    private async Task RegenerateSecretAsync()
+    {
+        if (_client == null) return;
+        var bytes = new byte[48];
+        RandomNumberGenerator.Fill(bytes);
+        _newSecret = Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
+        _client.ClientSecretHash = BCrypt.HashPassword(_newSecret);
+        _client.UpdatedAt = DateTime.UtcNow;
+        await Db.SaveChangesAsync();
+        _showSecret = true;
+        _message = "Secret regenerated. Copy it now — it won't be shown again after you leave this page.";
+        _isError = false;
+    }
+
+    private async Task ToggleEnabledAsync()
+    {
+        if (_client == null) return;
+        _client.IsEnabled = !_client.IsEnabled;
+        await Db.SaveChangesAsync();
+        _message = _client.IsEnabled ? "Client enabled." : "Client disabled.";
+        _isError = false;
+    }
+
+    private async Task RevokeTokenAsync(int tokenId)
+    {
+        var t = await Db.AccessTokens.FindAsync(tokenId);
+        if (t != null) { t.IsRevoked = true; await Db.SaveChangesAsync(); }
+        await LoadAsync();
+    }
+}

@@ -1,0 +1,94 @@
+@page "/"
+
+<PageTitle>Home — Demo App</PageTitle>
+
+<div class="py-5 text-center">
+    <div class="d-inline-flex align-items-center justify-content-center rounded-4 mb-4"
+         style="width:80px;height:80px;background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+        <svg width="40" height="40" fill="white" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10
+                     10-4.48 10-10S17.52 2 12 2zm-1
+                     14H9V8h2v8zm4 0h-2V8h2v8z"/>
+        </svg>
+    </div>
+    <h1 class="display-5 fw-bold mb-3">Welcome to Demo App</h1>
+    <p class="lead text-muted mb-5 mx-auto" style="max-width:520px;">
+        This app demonstrates OAuth 2.0 Authorization Code Flow with PKCE,
+        using your custom OAuth Provider for authentication.
+    </p>
+
+    <AuthorizeView>
+        <Authorized>
+            <div class="d-flex gap-3 justify-content-center flex-wrap">
+                <a href="/profile" class="btn btn-primary btn-lg px-4">View My Profile →</a>
+                <a href="/dashboard" class="btn btn-outline-primary btn-lg px-4">Dashboard</a>
+            </div>
+            <p class="text-muted mt-3 small">
+                Signed in as <strong>@context.User.Identity?.Name</strong>
+            </p>
+        </Authorized>
+        <NotAuthorized>
+            <a href="/Account/Login" class="btn btn-primary btn-lg px-5">
+                Sign In with OAuth Provider →
+            </a>
+            <p class="text-muted mt-3 small">
+                New users: create an account on the
+                <a href="https://localhost:5000" target="_blank">OAuth Provider</a>
+                admin console first.
+            </p>
+        </NotAuthorized>
+    </AuthorizeView>
+</div>
+
+<!-- Feature cards -->
+<div class="row g-4 mt-2">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 text-center p-4">
+            <div class="mb-3">
+                <div class="d-inline-flex rounded-3 p-3" style="background:#eef2ff;">
+                    <svg width="28" height="28" fill="#6366f1" viewBox="0 0 24 24">
+                        <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6
+                                 c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0
+                                 2-.9 2-2V10c0-1.1-.9-2-2-2z"/>
+                    </svg>
+                </div>
+            </div>
+            <h5 class="fw-semibold">PKCE Flow</h5>
+            <p class="text-muted small mb-0">
+                Authorization Code + PKCE (S256). No tokens ever touch the browser storage.
+            </p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 text-center p-4">
+            <div class="mb-3">
+                <div class="d-inline-flex rounded-3 p-3" style="background:#f0fdf4;">
+                    <svg width="28" height="28" fill="#22c55e" viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19
+                                 21 7l-1.41-1.41z"/>
+                    </svg>
+                </div>
+            </div>
+            <h5 class="fw-semibold">No Passwords Here</h5>
+            <p class="text-muted small mb-0">
+                Credentials only exist at the OAuth Provider. This app never sees your password.
+            </p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 text-center p-4">
+            <div class="mb-3">
+                <div class="d-inline-flex rounded-3 p-3" style="background:#fff7ed;">
+                    <svg width="28" height="28" fill="#f97316" viewBox="0 0 24 24">
+                        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12
+                                 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                    </svg>
+                </div>
+            </div>
+            <h5 class="fw-semibold">Secure Sessions</h5>
+            <p class="text-muted small mb-0">
+                Tokens stored server-side only. Session cookie is HttpOnly and SameSite=Lax.
+            </p>
+        </div>
+    </div>
+</div>

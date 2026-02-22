@@ -1,0 +1,185 @@
+@page "/super/organizations"
+@inject ApplicationDbContext Db
+@inject IOrganizationService OrgSvc
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SuperAdmin")]
+
+<PageTitle>Organizations — Super Admin</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="fw-bold">Organizations</h4>
+        <p class="text-muted mb-0">All tenants on the platform</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert alert-info alert-dismissible">@_message
+        <button type="button" class="btn-close" @onclick="() => _message = null"></button>
+    </div>
+}
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="px-4">Organization</th>
+                        <th>Slug</th>
+                        <th>Members</th>
+                        <th>Projects</th>
+                        <th>Limits (U/P/C)</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var org in _orgs)
+                    {
+                        <tr>
+                            <td class="px-4">
+                                <div class="fw-medium">@org.Name</div>
+                                <div class="text-muted small">@org.AdminEmail</div>
+                            </td>
+                            <td><code class="small">@org.Slug</code></td>
+                            <td>@org.Members.Count</td>
+                            <td>@org.Projects.Count</td>
+                            <td class="small text-muted">@org.MaxUsers / @org.MaxProjects / @org.MaxClients</td>
+                            <td>
+                                @if (org.IsBlocked)
+                                { <span class="badge bg-danger">Blocked</span> }
+                                else if (!org.IsActive)
+                                { <span class="badge bg-secondary">Inactive</span> }
+                                else
+                                { <span class="badge bg-success">Active</span> }
+                            </td>
+                            <td class="small text-muted">@org.CreatedAt.ToString("MMM d, yyyy")</td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    @if (org.IsBlocked)
+                                    {
+                                        <button class="btn btn-sm btn-outline-success" @onclick="() => UnblockOrgAsync(org.Id)">Unblock</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => StartBlock(org)">Block</button>
+                                    }
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEditLimits(org)">Limits</button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        @if (org.IsBlocked && !string.IsNullOrEmpty(org.BlockReason))
+                        {
+                            <tr class="table-danger">
+                                <td colspan="8" class="px-4 small text-danger py-1">
+                                    Block reason: @org.BlockReason
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Block dialog -->
+@if (_blockingOrg != null)
+{
+    <div class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+         style="background:rgba(0,0,0,.4);z-index:1000;">
+        <div class="card border-0 shadow-xl" style="width:440px;">
+            <div class="card-body p-4">
+                <h6 class="fw-bold mb-1">Block Organization</h6>
+                <p class="text-muted small mb-3">This will prevent all users of <strong>@_blockingOrg.Name</strong> from signing in and block all OAuth token issuance.</p>
+                <label class="form-label small fw-medium">Reason (optional)</label>
+                <textarea class="form-control mb-3" rows="2" @bind="_blockReason" placeholder="Violation of terms..."></textarea>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-danger" @onclick="ConfirmBlockAsync">Block Organization</button>
+                    <button class="btn btn-outline-secondary" @onclick="() => _blockingOrg = null">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Edit limits dialog -->
+@if (_editLimitsOrg != null)
+{
+    <div class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+         style="background:rgba(0,0,0,.4);z-index:1000;">
+        <div class="card border-0 shadow-xl" style="width:400px;">
+            <div class="card-body p-4">
+                <h6 class="fw-bold mb-3">Edit Limits — @_editLimitsOrg.Name</h6>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Max Users</label>
+                    <input type="number" class="form-control" @bind="_limitUsers"/>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Max Projects</label>
+                    <input type="number" class="form-control" @bind="_limitProjects"/>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Max Clients</label>
+                    <input type="number" class="form-control" @bind="_limitClients"/>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary" @onclick="SaveLimitsAsync">Save</button>
+                    <button class="btn btn-outline-secondary" @onclick="() => _editLimitsOrg = null">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Organization> _orgs = new();
+    private Organization? _blockingOrg, _editLimitsOrg;
+    private string _blockReason = "", _message = "";
+    private int _limitUsers, _limitProjects, _limitClients;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _orgs = await OrgSvc.GetAllAsync();
+    }
+
+    private void StartBlock(Organization org) { _blockingOrg = org; _blockReason = ""; }
+
+    private async Task ConfirmBlockAsync()
+    {
+        if (_blockingOrg == null) return;
+        await OrgSvc.BlockAsync(_blockingOrg.Id, _blockReason);
+        _message = $"Organization '{_blockingOrg.Name}' has been blocked.";
+        _blockingOrg = null;
+        await LoadAsync();
+    }
+
+    private async Task UnblockOrgAsync(int id)
+    {
+        await OrgSvc.UnblockAsync(id);
+        _message = "Organization unblocked.";
+        await LoadAsync();
+    }
+
+    private void StartEditLimits(Organization org)
+    {
+        _editLimitsOrg  = org;
+        _limitUsers     = org.MaxUsers;
+        _limitProjects  = org.MaxProjects;
+        _limitClients   = org.MaxClients;
+    }
+
+    private async Task SaveLimitsAsync()
+    {
+        if (_editLimitsOrg == null) return;
+        await OrgSvc.UpdateLimitsAsync(_editLimitsOrg.Id, _limitUsers, _limitProjects, _limitClients);
+        _message = "Limits updated.";
+        _editLimitsOrg = null;
+        await LoadAsync();
+    }
+}

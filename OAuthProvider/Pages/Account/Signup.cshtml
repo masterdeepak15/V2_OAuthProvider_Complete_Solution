@@ -1,0 +1,141 @@
+@page "/Account/Signup"
+@model OAuthProviderV2.Pages.Account.SignupModel
+@{ Layout = null; }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Create Organization — OAuth Provider</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="/app.css"/>
+</head>
+<body class="bg-light">
+<div class="min-vh-100 d-flex align-items-center justify-content-center py-5">
+    <div class="card border-0 shadow-lg" style="width:520px;max-width:95vw;">
+        <div class="card-body p-5">
+            <div class="text-center mb-4">
+                <div class="auth-logo mx-auto mb-3">🔐</div>
+                <h3 class="fw-bold">Create Organization</h3>
+                <p class="text-muted small">Step @(Model.Step == "otp" ? "2" : "1") of 3</p>
+                <!-- Progress bar -->
+                <div class="progress mt-3" style="height:4px;">
+                    <div class="progress-bar bg-primary" style="width:@(Model.Step == "otp" ? "66" : "33")%"></div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger py-2 small">@Model.ErrorMessage</div>
+            }
+            @if (!string.IsNullOrEmpty(Model.SuccessMessage))
+            {
+                <div class="alert alert-success py-2 small">@Model.SuccessMessage</div>
+            }
+
+            @if (Model.Step == "details")
+            {
+                <!-- Step 1: Org + Admin details -->
+                <form method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="Step" value="details"/>
+
+                    <h6 class="fw-semibold text-muted mb-3">ORGANIZATION</h6>
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">Organization Name <span class="text-danger">*</span></label>
+                        <input type="text" name="OrgName" class="form-control" value="@Model.OrgName"
+                               placeholder="Acme Corp" required maxlength="100"/>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-medium">Organization Website</label>
+                        <input type="url" name="Website" class="form-control" value="@Model.Website"
+                               placeholder="https://acmecorp.com"/>
+                    </div>
+
+                    <h6 class="fw-semibold text-muted mb-3">ADMIN ACCOUNT</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-medium">First Name <span class="text-danger">*</span></label>
+                            <input type="text" name="FirstName" class="form-control" value="@Model.FirstName" required/>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-medium">Last Name <span class="text-danger">*</span></label>
+                            <input type="text" name="LastName" class="form-control" value="@Model.LastName" required/>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">Email Address <span class="text-danger">*</span></label>
+                        <input type="email" name="AdminEmail" class="form-control" value="@Model.AdminEmail"
+                               placeholder="admin@acmecorp.com" required autocomplete="username"/>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">Password <span class="text-danger">*</span></label>
+                        <input type="password" name="Password" class="form-control" required
+                               placeholder="Min 8 chars, upper, lower, digit, special" autocomplete="new-password"/>
+                        <div class="form-text">Minimum 8 characters — must include uppercase, lowercase, number, and special character.</div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-medium">Confirm Password <span class="text-danger">*</span></label>
+                        <input type="password" name="ConfirmPassword" class="form-control" required autocomplete="new-password"/>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-lg w-100 fw-semibold">
+                        Send Verification Code →
+                    </button>
+                </form>
+            }
+            else if (Model.Step == "otp")
+            {
+                <!-- Step 2: OTP Verification -->
+                <div class="text-center mb-4">
+                    <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary bg-opacity-10 mb-3"
+                         style="width:64px;height:64px;font-size:28px;">📧</div>
+                    <p class="text-muted">We sent a 6-digit code to<br/><strong>@Model.AdminEmail</strong></p>
+                </div>
+
+                <form method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="Step" value="otp"/>
+                    <input type="hidden" name="AdminEmail" value="@Model.AdminEmail"/>
+                    <input type="hidden" name="OrgName" value="@Model.OrgName"/>
+                    <input type="hidden" name="Website" value="@Model.Website"/>
+                    <input type="hidden" name="FirstName" value="@Model.FirstName"/>
+                    <input type="hidden" name="LastName" value="@Model.LastName"/>
+                    <input type="hidden" name="PasswordToken" value="@Model.PasswordToken"/>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-medium text-center d-block">Enter Verification Code</label>
+                        <input type="text" name="Otp" class="form-control form-control-lg text-center fw-bold"
+                               placeholder="000000" maxlength="6" pattern="[0-9]{6}"
+                               style="font-size:32px;letter-spacing:12px;" required autocomplete="one-time-code"/>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-lg w-100 fw-semibold mb-3">
+                        Verify &amp; Create Organization ✓
+                    </button>
+                </form>
+
+                <form method="post" class="text-center">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="Step" value="resend"/>
+                    <input type="hidden" name="AdminEmail" value="@Model.AdminEmail"/>
+                    <button type="submit" class="btn btn-link text-muted small p-0">
+                        Didn't receive it? Resend code
+                    </button>
+                </form>
+
+                <div class="text-center mt-3">
+                    <a href="/Account/Signup" class="text-muted small">← Back to details</a>
+                </div>
+            }
+
+            <hr class="my-4"/>
+            <div class="text-center">
+                <span class="text-muted small">Already have an account? </span>
+                <a href="/Account/Login" class="small fw-semibold">Sign in</a>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

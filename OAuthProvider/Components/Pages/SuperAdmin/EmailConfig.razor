@@ -1,0 +1,124 @@
+@page "/super/email"
+@inject ApplicationDbContext Db
+@using OAuthProviderV2.Services.Email
+@inject IEmailService EmailSvc
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SuperAdmin")]
+
+<PageTitle>Email Configuration — Super Admin</PageTitle>
+
+<div class="mb-4">
+    <h4 class="fw-bold">Platform Email Configuration</h4>
+    <p class="text-muted mb-0">Default SMTP settings used when organizations don't configure their own</p>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{ <div class="alert alert-@(_isError ? "danger" : "success") small">@_message</div> }
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-8">
+                <label class="form-label fw-medium">SMTP Host <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="_host" placeholder="smtp.gmail.com"/>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-medium">Port</label>
+                <input type="number" class="form-control" @bind="_port"/>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <div class="form-check mb-2">
+                    <input type="checkbox" class="form-check-input" id="ssl" @bind="_ssl"/>
+                    <label class="form-check-label" for="ssl">Use SSL/TLS</label>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-medium">SMTP Username</label>
+                <input class="form-control" @bind="_username" placeholder="smtp@yourapp.com"/>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-medium">SMTP Password</label>
+                <div class="input-group">
+                    <input type="@(_showPass ? "text" : "password")" class="form-control" @bind="_password" placeholder="••••••••"/>
+                    <button class="btn btn-outline-secondary" type="button" @onclick="() => _showPass = !_showPass">
+                        @(_showPass ? "Hide" : "Show")
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-medium">From Email</label>
+                <input type="email" class="form-control" @bind="_fromEmail" placeholder="noreply@yourapp.com"/>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-medium">From Name</label>
+                <input class="form-control" @bind="_fromName" placeholder="OAuth Provider"/>
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save Configuration
+            </button>
+            <button class="btn btn-outline-secondary" @onclick="TestAsync" disabled="@_testing">
+                @if (_testing) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Send Test Email
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _host = "", _username = "", _password = "", _fromEmail = "", _fromName = "OAuth Provider";
+    private int _port = 587;
+    private bool _ssl = true, _showPass, _saving, _testing;
+    private string _message = "";
+    private bool _isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var config = await Db.PlatformEmailConfigs.FirstOrDefaultAsync();
+        if (config != null)
+        {
+            _host      = config.SmtpHost;
+            _port      = config.SmtpPort;
+            _ssl       = config.SmtpUseSsl;
+            _username  = config.SmtpUsername;
+            _fromEmail = config.FromEmail;
+            _fromName  = config.FromName;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        try
+        {
+            var config = await Db.PlatformEmailConfigs.FirstOrDefaultAsync()
+                      ?? Db.PlatformEmailConfigs.Add(new PlatformEmailConfig()).Entity;
+
+            config.SmtpHost              = _host;
+            config.SmtpPort              = _port;
+            config.SmtpUseSsl            = _ssl;
+            config.SmtpUsername          = _username;
+            config.SmtpPasswordEncrypted = EmailService.EncryptPassword(_password);
+            config.FromEmail             = _fromEmail;
+            config.FromName              = _fromName;
+            config.IsConfigured          = !string.IsNullOrEmpty(_host);
+            config.UpdatedAt             = DateTime.UtcNow;
+
+            await Db.SaveChangesAsync();
+            _message = "Email configuration saved."; _isError = false;
+        }
+        catch (Exception ex) { _message = ex.Message; _isError = true; }
+        _saving = false;
+    }
+
+    private async Task TestAsync()
+    {
+        _testing = true;
+        var ok = await EmailSvc.TestConfigAsync(null);
+        _message = ok ? "Test email sent successfully!" : "Failed to send test email. Check your SMTP settings.";
+        _isError = !ok;
+        _testing = false;
+    }
+}
