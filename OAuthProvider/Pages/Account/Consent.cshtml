@@ -84,7 +84,7 @@
             <span class="provider-logo">🔐</span>OAuth Provider
         </p>
         <h5 class="fw-bold mb-0">@Model.ClientName</h5>
-        <p class="text-muted small mb-3">wants to access your account</p>
+        <p class="text-muted small mb-3">@(Model.AccessDenied ? "is not available for your account" : "wants to access your account")</p>
 
         @* Show which account is being authorized *@
         <div class="d-flex align-items: center; justify-content: center;">
@@ -104,6 +104,21 @@
         </form>
     </div>
 
+    @if (Model.AccessDenied)
+    {
+        <div class="px-4 pb-4 pt-2 text-center">
+            <hr class="my-2"/>
+            <div style="font-size:40px;">🚫</div>
+            <p class="fw-semibold mb-1">You don't have access to this application</p>
+            <p class="text-muted small mb-4">
+                Your account is not assigned to this app's project. Ask your organization
+                administrator to add you to the project, then try again.
+            </p>
+            <a href="@Model.DenyRedirect" class="btn btn-outline-secondary btn-deny w-100">Back to application</a>
+        </div>
+    }
+    else
+    {
     <div class="px-4 pb-2 pt-3">
         @if (!string.IsNullOrEmpty(Model.ClientDescription))
         {
@@ -145,6 +160,7 @@
             privacy policy. You can revoke access at any time from your account settings.
         </p>
     </div>
+    }
 </div>
 </div>
 </body>

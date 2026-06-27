@@ -38,7 +38,7 @@
                 </Authorized>
             </AuthorizeView>
 
-            <AuthorizeView Roles="OrgAdmin,OrgUser">
+            <AuthorizeView Roles="OrgAdmin">
                 <Authorized>
                     <div class="sidebar-section-label">ORGANIZATION</div>
                     <NavLink class="sidebar-link" href="/" Match="NavLinkMatch.All">
@@ -52,6 +52,15 @@
                     </NavLink>
                     <NavLink class="sidebar-link" href="/tokens">
                         <span>🪙</span> Tokens
+                    </NavLink>
+                </Authorized>
+            </AuthorizeView>
+
+            <AuthorizeView Roles="OrgUser">
+                <Authorized>
+                    <div class="sidebar-section-label">MY ACCESS</div>
+                    <NavLink class="sidebar-link" href="/my-apps" Match="NavLinkMatch.All">
+                        <span>🧩</span> My Applications
                     </NavLink>
                 </Authorized>
             </AuthorizeView>

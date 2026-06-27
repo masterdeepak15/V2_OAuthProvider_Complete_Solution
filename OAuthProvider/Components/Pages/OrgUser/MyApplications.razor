@@ -1,0 +1,115 @@
+@page "/my-apps"
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>My Applications — OAuth Provider</PageTitle>
+
+<div class="mb-4">
+    <h4 class="fw-bold mb-1">My Applications</h4>
+    <p class="text-muted mb-0">Apps you've been granted access to. Sign in to any of them with this account.</p>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (!_apps.Any())
+{
+    <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-5">
+            <div style="font-size:42px;">📭</div>
+            <h6 class="fw-bold mt-2 mb-1">No applications yet</h6>
+            <p class="text-muted small mb-0">
+                You haven't been assigned to any projects. Ask your organization administrator
+                to add you to a project so its applications appear here.
+            </p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row g-3">
+        @foreach (var app in _apps)
+        {
+            <div class="col-md-6 col-xl-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <div class="user-avatar-sm" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">🔑</div>
+                            <div class="flex-grow-1" style="min-width:0;">
+                                <div class="fw-semibold small text-truncate">@app.ClientName</div>
+                                <div class="text-muted" style="font-size:11px;">@app.ProjectName</div>
+                            </div>
+                            <span class="badge @(app.IsEnabled ? "bg-success" : "bg-secondary")">
+                                @(app.IsEnabled ? "Active" : "Disabled")
+                            </span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(app.Description))
+                        {
+                            <p class="text-muted small mb-2">@app.Description</p>
+                        }
+                        @if (app.LaunchUrl != null)
+                        {
+                            <a href="@app.LaunchUrl" target="_blank" rel="noopener"
+                               class="btn btn-sm btn-outline-primary w-100">Open application ↗</a>
+                        }
+                        else
+                        {
+                            <div class="text-muted" style="font-size:11px;">
+                                Launch this app from its own website — sign in with this account when prompted.
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<AppCard> _apps = new();
+
+    private record AppCard(string ClientName, string ProjectName, string? Description, bool IsEnabled, string? LaunchUrl);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Email == auth.User.Identity!.Name);
+        if (user == null) { _loading = false; return; }
+
+        // Projects this user is explicitly assigned to (matches the OAuth access gate).
+        var projectIds = await Db.ProjectUsers
+            .Where(pu => pu.UserId == user.Id)
+            .Select(pu => pu.ProjectId)
+            .ToListAsync();
+
+        var clients = await Db.OAuthClients
+            .Where(c => projectIds.Contains(c.ProjectId))
+            .Include(c => c.Project)
+            .Include(c => c.RedirectUris)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
+
+        _apps = clients.Select(c => new AppCard(
+            c.Name,
+            c.Project.Name,
+            c.Description,
+            c.IsEnabled,
+            DeriveLaunchUrl(c.RedirectUris.Select(r => r.Uri))
+        )).ToList();
+
+        _loading = false;
+    }
+
+    // Best-effort "open app" link: the origin of the client's first redirect URI.
+    private static string? DeriveLaunchUrl(IEnumerable<string> redirectUris)
+    {
+        var first = redirectUris.FirstOrDefault();
+        if (first == null) return null;
+        return Uri.TryCreate(first, UriKind.Absolute, out var uri)
+            ? $"{uri.Scheme}://{uri.Authority}"
+            : null;
+    }
+}

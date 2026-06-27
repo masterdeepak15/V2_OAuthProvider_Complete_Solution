@@ -20,7 +20,9 @@ public interface IOrganizationService
     // User management (org-scoped)
     Task<(bool ok, string? error)> InviteUserAsync(int orgId, string email, string firstName, string lastName, string role, string baseUrl);
     Task<bool> VerifyUserEmailAsync(string token);
-    Task<string?> GetManualVerifyLinkAsync(int orgId, string userId, string baseUrl);
+    Task<ApplicationUser?> GetUserByInviteTokenAsync(string token);
+    Task<(bool ok, string? error)> SetPasswordFromInviteAsync(string token, string newPassword);
+    Task<string?> GetManualSetPasswordLinkAsync(int orgId, string userId, string baseUrl);
     Task<bool> RemoveUserAsync(int orgId, string userId);
     Task<List<ApplicationUser>> GetUsersAsync(int orgId);
     Task<ApplicationUser?> GetUserAsync(int orgId, string userId);
@@ -225,9 +227,11 @@ public class OrganizationService : IOrganizationService
             await _db.SaveChangesAsync();
         }
 
-        // Send verification email
-        var verifyUrl = $"{baseUrl}/Account/VerifyEmail?token={Uri.EscapeDataString(user.EmailVerificationToken!)}";
-        await _email.SendUserInviteAsync(email, $"{firstName} {lastName}", verifyUrl, org.Name);
+        // Send invite email — the link leads to a page where the user sets their own
+        // password (which also verifies their email). Until then they have only an
+        // unknown random temp password and cannot sign in.
+        var setPasswordUrl = $"{baseUrl}/Account/SetPassword?token={Uri.EscapeDataString(user.EmailVerificationToken!)}";
+        await _email.SendUserInviteAsync(email, $"{firstName} {lastName}", setPasswordUrl, org.Name);
 
         return (true, null);
     }
@@ -248,7 +252,33 @@ public class OrganizationService : IOrganizationService
         return true;
     }
 
-    public async Task<string?> GetManualVerifyLinkAsync(int orgId, string userId, string baseUrl)
+    public async Task<ApplicationUser?> GetUserByInviteTokenAsync(string token) =>
+        await _db.Users.FirstOrDefaultAsync(u =>
+            u.EmailVerificationToken == token &&
+            u.EmailVerificationTokenExpiry > DateTime.UtcNow);
+
+    public async Task<(bool ok, string? error)> SetPasswordFromInviteAsync(string token, string newPassword)
+    {
+        var user = await GetUserByInviteTokenAsync(token);
+        if (user == null) return (false, "This link is invalid or has expired. Ask your administrator for a new one.");
+
+        // Replace whatever (unknown, random) password the account currently has.
+        var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var result = await _userManager.ResetPasswordAsync(user, resetToken, newPassword);
+        if (!result.Succeeded)
+            return (false, string.Join("; ", result.Errors.Select(e => e.Description)));
+
+        // Setting the password also confirms the email and consumes the invite token.
+        user.IsEmailVerified              = true;
+        user.EmailConfirmed               = true;
+        user.EmailVerificationToken       = null;
+        user.EmailVerificationTokenExpiry = null;
+        await _userManager.UpdateAsync(user);
+
+        return (true, null);
+    }
+
+    public async Task<string?> GetManualSetPasswordLinkAsync(int orgId, string userId, string baseUrl)
     {
         var user = await _db.Users
             .FirstOrDefaultAsync(u => u.Id == userId && u.OrganizationId == orgId);
@@ -259,7 +289,7 @@ public class OrganizationService : IOrganizationService
         user.EmailVerificationTokenExpiry = DateTime.UtcNow.AddHours(48);
         await _userManager.UpdateAsync(user);
 
-        return $"{baseUrl}/Account/VerifyEmail?token={Uri.EscapeDataString(user.EmailVerificationToken)}";
+        return $"{baseUrl}/Account/SetPassword?token={Uri.EscapeDataString(user.EmailVerificationToken)}";
     }
 
     public async Task<bool> RemoveUserAsync(int orgId, string userId)

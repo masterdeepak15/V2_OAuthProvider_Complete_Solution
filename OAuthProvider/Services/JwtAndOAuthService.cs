@@ -94,6 +94,7 @@ public interface IOAuthService
     Task<bool> RevokeTokenAsync(string token);
     Task<ApplicationUser?> GetUserFromTokenAsync(string token);
     Task<bool> ValidateCorsOriginAsync(int clientId, string origin);
+    Task<bool> UserCanAccessClientAsync(string userId, OAuthClient client);
 }
 
 public class OAuthService : IOAuthService
@@ -134,6 +135,30 @@ public class OAuthService : IOAuthService
 
     public async Task<bool> ValidateCorsOriginAsync(int clientId, string origin) =>
         await _db.OAuthClientCorsOrigins.AnyAsync(c => c.OAuthClientId == clientId && c.Origin == origin);
+
+    /// <summary>
+    /// A user may authorize a client only when they belong to the client's organisation
+    /// (tenant isolation) AND either administer that org or are explicitly assigned to the
+    /// client's project. This is what makes project membership actually gate app access.
+    /// </summary>
+    public async Task<bool> UserCanAccessClientAsync(string userId, OAuthClient client)
+    {
+        if (string.IsNullOrEmpty(userId)) return false;
+
+        // Tenant isolation — the user must be an active member of the client's organisation.
+        var membership = await _db.OrganizationUsers
+            .FirstOrDefaultAsync(ou => ou.OrganizationId == client.OrganizationId
+                                    && ou.UserId == userId
+                                    && ou.IsActive);
+        if (membership == null) return false;
+
+        // Org owners/admins can reach any client in their own organisation.
+        if (membership.Role is "owner" or "admin") return true;
+
+        // Everyone else must be assigned to the client's project.
+        return await _db.ProjectUsers
+            .AnyAsync(pu => pu.ProjectId == client.ProjectId && pu.UserId == userId);
+    }
 
     public async Task<AuthorizationCode> CreateAuthorizationCodeAsync(int clientId, int orgId, string userId, string redirectUri, string scopes, string? codeChallenge = null, string? codeChallengeMethod = null)
     {

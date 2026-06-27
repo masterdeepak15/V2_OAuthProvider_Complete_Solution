@@ -132,6 +132,13 @@ else
             return;
         }
 
+        // Normal members don't manage the org — send them to their applications view.
+        if (!auth.User.IsInRole("OrgAdmin"))
+        {
+            Nav.NavigateTo("/my-apps", forceLoad: false);
+            return;
+        }
+
         var user = await Db.Users.FirstOrDefaultAsync(u => u.Email == auth.User.Identity!.Name);
         if (user?.OrganizationId == null) return;
         _orgId = user.OrganizationId.Value;

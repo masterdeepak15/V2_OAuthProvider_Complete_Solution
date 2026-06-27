@@ -41,6 +41,9 @@ public class ConsentModel : PageModel
     public string  ReturnParams      { get; set; } = "";
     public List<ScopeDetail> ScopeDetails { get; set; } = new();
 
+    // Set when the signed-in user is not allowed to access this client (project membership).
+    public bool    AccessDenied      { get; set; }
+
     public async Task<IActionResult> OnGetAsync(
         string client_id, string redirect_uri, string scope, string? state,
         string? code_challenge, string? code_challenge_method)
@@ -54,6 +57,35 @@ public class ConsentModel : PageModel
 
         var user = await _userMgr.FindByIdAsync(userId);
         if (user == null) return Redirect("/Account/Login");
+
+        ClientName        = client.Name;
+        ClientDescription = client.Description;
+        UserEmail         = user.Email!;
+        UserInitials      = GetInitials(user);
+        UserColor         = GetColor(user.Email!);
+
+        // Project-level access gate — a user not assigned to the client's project
+        // (and not an org admin) cannot authorize this application.
+        if (!await _oauth.UserCanAccessClientAsync(userId, client))
+        {
+            AccessDenied = true;
+            DenyRedirect = $"{redirect_uri}?error=access_denied" +
+                (!string.IsNullOrEmpty(state) ? $"&state={Uri.EscapeDataString(state)}" : "");
+            await _audit.LogAsync(new AuditLogRequest
+            {
+                OrganizationId = client.OrganizationId,
+                UserId         = userId,
+                EventType      = "ConsentDenied",
+                EventCategory  = "oauth",
+                Success        = false,
+                FailureReason  = "User not assigned to client's project",
+                ResourceType   = "OAuthClient",
+                ResourceId     = client.Id.ToString(),
+                ResourceName   = client.Name,
+                HttpContext    = HttpContext,
+            });
+            return Page();
+        }
 
         // Stash all params encoded so we can reconstruct after consent
         var ps = new Dictionary<string, string?>
@@ -96,6 +128,28 @@ public class ConsentModel : PageModel
 
         var client = await _oauth.ValidateClientAsync(clientId);
         if (client == null) return BadRequest("Invalid client.");
+
+        // Re-check access at the point a code would be issued — the user must not be able to
+        // POST "Allow" for a client their project membership does not grant.
+        if (!await _oauth.UserCanAccessClientAsync(userId, client))
+        {
+            await _audit.LogAsync(new AuditLogRequest
+            {
+                OrganizationId = client.OrganizationId,
+                UserId         = userId,
+                EventType      = "ConsentDenied",
+                EventCategory  = "oauth",
+                Success        = false,
+                FailureReason  = "User not assigned to client's project",
+                ResourceType   = "OAuthClient",
+                ResourceId     = client.Id.ToString(),
+                ResourceName   = client.Name,
+                HttpContext    = HttpContext,
+            });
+            var denyUrl = $"{redirectUri}?error=access_denied" +
+                (!string.IsNullOrEmpty(state) ? $"&state={Uri.EscapeDataString(state)}" : "");
+            return Redirect(denyUrl);
+        }
 
         var code = await _oauth.CreateAuthorizationCodeAsync(
             client.Id, client.OrganizationId, userId, redirectUri, scope,

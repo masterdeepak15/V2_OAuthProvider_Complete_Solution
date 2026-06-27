@@ -112,7 +112,7 @@
                                     {
                                         <button class="btn btn-sm btn-outline-info"
                                                 @onclick="() => ShowVerifyLinkAsync(user.Id)">
-                                            📋 Get Link
+                                            📋 Set-Password Link
                                         </button>
                                     }
                                 </div>
@@ -131,8 +131,8 @@
     <div class="modal-backdrop-custom" @onclick="() => _verifyLink = null"></div>
     <div class="modal-dialog-custom card border-0 shadow-xl">
         <div class="card-body p-4">
-            <h6 class="fw-bold mb-2">📋 Manual Verification Link</h6>
-            <p class="small text-muted mb-3">Share this link with the user to verify their email:</p>
+            <h6 class="fw-bold mb-2">📋 Manual Set-Password Link</h6>
+            <p class="small text-muted mb-3">Share this link with the user so they can set their password and activate their account:</p>
             <div class="input-group">
                 <input type="text" class="form-control form-control-sm font-monospace small" readonly value="@_verifyLink"/>
                 <button class="btn btn-outline-primary btn-sm" @onclick="CopyLink">Copy</button>
@@ -180,7 +180,7 @@
 
         if (ok)
         {
-            _inviteSuccess = $"Invitation sent to {_inviteEmail}. They will receive a verification email.";
+            _inviteSuccess = $"Invitation sent to {_inviteEmail}. They will receive an email to set their password.";
             _inviteEmail = _inviteFirst = _inviteLast = "";
             await LoadAsync();
         }
@@ -200,7 +200,7 @@
     private async Task ShowVerifyLinkAsync(string userId)
     {
         var baseUrl = Nav.BaseUri.TrimEnd('/');
-        _verifyLink = await OrgSvc.GetManualVerifyLinkAsync(_orgId, userId, baseUrl);
+        _verifyLink = await OrgSvc.GetManualSetPasswordLinkAsync(_orgId, userId, baseUrl);
     }
 
     private void CopyLink() { /* JS interop for clipboard — omitted per zero-JS constraint */ }

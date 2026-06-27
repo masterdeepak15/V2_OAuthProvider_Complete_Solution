@@ -11,7 +11,7 @@ public interface IEmailService
 {
     Task<bool> SendAsync(int? organizationId, string toEmail, string toName, string subject, string htmlBody);
     Task<bool> SendOtpAsync(string email, string otp);
-    Task<bool> SendUserInviteAsync(string email, string name, string verifyUrl, string orgName);
+    Task<bool> SendUserInviteAsync(string email, string name, string setPasswordUrl, string orgName);
     Task<bool> SendLoginAlertAsync(int organizationId, string email, string name, string ip, string browser, string os, string location);
     Task<bool> SendSecurityAlertAsync(int organizationId, string email, string subject, string message);
     Task<bool> TestConfigAsync(int? organizationId);
@@ -74,23 +74,23 @@ public class EmailService : IEmailService
         return await SendAsync(null, email, email, "Your OTP Verification Code", html);
     }
 
-    public async Task<bool> SendUserInviteAsync(string email, string name, string verifyUrl, string orgName)
+    public async Task<bool> SendUserInviteAsync(string email, string name, string setPasswordUrl, string orgName)
     {
         var html = $@"
             <h2>You've been invited to <span style='color:#6366f1;'>{orgName}</span></h2>
             <p>Hi {name},</p>
             <p>An administrator has added you to <strong>{orgName}</strong> on the OAuth Provider platform.</p>
-            <p>Click the button below to verify your email address and activate your account:</p>
+            <p>Click the button below to set your password and activate your account:</p>
             <div style='text-align:center;margin:32px 0;'>
-                <a href='{verifyUrl}' style='background:#6366f1;color:white;padding:14px 32px;
+                <a href='{setPasswordUrl}' style='background:#6366f1;color:white;padding:14px 32px;
                    border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;'>
-                    Verify My Email &amp; Activate Account
+                    Set My Password &amp; Activate Account
                 </a>
             </div>
-            <p style='color:#888;'>This link expires in <strong>48 hours</strong>.</p>
+            <p style='color:#888;'>This link expires in <strong>48 hours</strong>. Setting your password also verifies your email.</p>
             <p style='color:#888;'>If you did not expect this invitation, you can safely ignore this email.</p>";
 
-        return await SendAsync(null, email, name, $"You're invited to {orgName} — Verify your email", html);
+        return await SendAsync(null, email, name, $"You're invited to {orgName} — Set your password", html);
     }
 
     public async Task<bool> SendLoginAlertAsync(int organizationId, string email, string name, string ip, string browser, string os, string location)
